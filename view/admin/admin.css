@@ -1,0 +1,42 @@
+.sidebar {
+    min-height: 100vh;
+    background-color: #343a40;
+}
+
+.sidebar .nav-link {
+    color: #fff;
+    border-radius: 0.25rem;
+    margin: 0.125rem 0;
+}
+
+.sidebar .nav-link:hover,
+.sidebar .nav-link.active {
+    background-color: #495057;
+    color: #fff;
+}
+
+.content {
+    background-color: #f8f9fa;
+    min-height: 100vh;
+}
+
+.card-stats {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.table-responsive {
+    border-radius: 0.5rem;
+    overflow: hidden;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.btn-group-sm>.btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+.stock-warning {
+    background-color: #fff3cd;
+    border-color: #ffeaa7;
+}

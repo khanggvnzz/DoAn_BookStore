@@ -1,0 +1,76 @@
+/* Promotion banner styling */
+.promo-banner {
+    margin-bottom: 40px;
+    margin-top: 40px !important;
+    overflow: hidden;
+    position: relative;
+}
+
+.promo-banner h2 {
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.promotion-image-container {
+    width: 100%;
+    height: 400px;
+    overflow: hidden;
+    background-color: #f8f9fa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    /* Thêm position relative */
+}
+
+.promotion-image {
+    width: 100%;
+    /* Thay đổi từ max-width thành width */
+    height: 100%;
+    /* Thay đổi từ max-height thành height */
+    object-fit: contain;
+    /* Giữ nguyên để tránh bị cắt */
+    object-position: center;
+    /* Đảm bảo ảnh nằm giữa */
+    transition: transform 0.3s ease;
+}
+
+/* Hiệu ứng hover cho ảnh banner */
+.carousel-item:hover .promotion-image {
+    transform: scale(1.02);
+    /* Phóng to nhẹ khi hover */
+}
+
+/* Làm cho banner full-width */
+.promo-banner .container-fluid {
+    padding: 0;
+    margin: 0;
+    max-width: 100vw;
+}
+
+/* Cải thiện nút điều khiển carousel */
+#promotionCarousel .carousel-control-prev,
+#promotionCarousel .carousel-control-next {
+    width: 5%;
+    opacity: 0.8;
+    background: rgba(0, 0, 0, 0.3);
+    height: 60px;
+    top: 50%;
+    transform: translateY(-50%);
+    border-radius: 4px;
+}
+
+#promotionCarousel .carousel-control-prev {
+    left: 10px;
+}
+
+#promotionCarousel .carousel-control-next {
+    right: 10px;
+}
+
+#promotionCarousel .carousel-control-prev:hover,
+#promotionCarousel .carousel-control-next:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.5);
+}
