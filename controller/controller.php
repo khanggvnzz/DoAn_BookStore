@@ -7,7 +7,6 @@ require_once BASE_PATH . '/model/BookModel.php';
 // Get controller and action from URL parameters
 $controller = isset($_GET['controller']) ? $_GET['controller'] : 'home';
 $action = isset($_GET['action']) ? $_GET['action'] : 'index';
-var_dump($controller, $action); // Debugging line to check controller and action
 
 // Route handling
 try {
