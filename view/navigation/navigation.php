@@ -24,7 +24,6 @@ $isAdmin = isset($_SESSION['admin']) && $_SESSION['admin'] === true;
 $username = isset($_SESSION['user_name']) ? $_SESSION['user_name'] : (isset($_SESSION['username']) ? $_SESSION['username'] : '');
 $userEmail = isset($_SESSION['user_email']) ? $_SESSION['user_email'] : '';
 $userPermission = isset($_SESSION['user_permission']) ? $_SESSION['user_permission'] : 'user';
-
 ?>
 
 <!DOCTYPE html>
@@ -132,7 +131,7 @@ $userPermission = isset($_SESSION['user_permission']) ? $_SESSION['user_permissi
                     <?php if ($isLoggedIn): ?>
                         <!-- Shopping Cart (for logged in users) -->
                         <div class="position-relative me-3">
-                            <a href="/DoAn_BookStore/cart" class="btn btn-outline-light">
+                            <a href="/DoAn_BookStore/view/cart/cart.php" class="btn btn-outline-light">
                                 <i class="fas fa-shopping-cart"></i>
                                 <span class="badge bg-danger cart-badge" id="cart-count" style="display: none;">0</span>
                             </a>
@@ -218,6 +217,14 @@ $userPermission = isset($_SESSION['user_permission']) ? $_SESSION['user_permissi
                         </div>
 
                     <?php else: ?>
+                        <!-- Shopping Cart (for non-logged in users - redirect to login) -->
+                        <div class="position-relative me-3">
+                            <a href="/DoAn_BookStore/view/auth/login.php" class="btn btn-outline-light"
+                                title="Đăng nhập để sử dụng giỏ hàng">
+                                <i class="fas fa-shopping-cart"></i>
+                            </a>
+                        </div>
+
                         <!-- Login/Register buttons -->
                         <a href="/DoAn_BookStore/view/auth/login.php" class="btn btn-outline-light me-2">
                             <i class="fas fa-sign-in-alt"></i> Đăng nhập

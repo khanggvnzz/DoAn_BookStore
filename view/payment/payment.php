@@ -1,0 +1,613 @@
+<?php
+session_start();
+
+// Check if user is logged in
+if (!isset($_SESSION['user_id'])) {
+    header('Location: /DoAn_BookStore/view/auth/login.php');
+    exit();
+}
+
+// Check if checkout data exists
+if (!isset($_SESSION['checkout_data']) || empty($_SESSION['checkout_data']['items'])) {
+    header('Location: /DoAn_BookStore/view/cart/cart.php');
+    exit();
+}
+
+require_once __DIR__ . '/../../model/Database.php';
+
+$database = new Database();
+$userId = $_SESSION['user_id'];
+$checkoutData = $_SESSION['checkout_data'];
+
+// Get user information
+$user = $database->getUserById($userId);
+var_dump($user);
+
+// Handle form submission
+$message = '';
+$messageType = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'place_order') {
+    try {
+        $database->beginTransaction();
+
+        // Validate form data
+        $customerName = trim($_POST['customer_name'] ?? '');
+        $customerPhone = trim($_POST['customer_phone'] ?? '');
+        $customerEmail = trim($_POST['customer_email'] ?? '');
+        $shippingAddress = trim($_POST['shipping_address'] ?? '');
+        $paymentMethod = $_POST['payment_method'] ?? '';
+        $notes = trim($_POST['notes'] ?? '');
+
+        if (empty($customerName) || empty($customerPhone) || empty($shippingAddress) || empty($paymentMethod)) {
+            throw new Exception('Vui lòng điền đầy đủ thông tin bắt buộc');
+        }
+
+        // Create order
+        $orderData = [
+            'user_id' => $userId,
+            'customer_name' => $customerName,
+            'customer_phone' => $customerPhone,
+            'customer_email' => $customerEmail,
+            'shipping_address' => $shippingAddress,
+            'payment_method' => $paymentMethod,
+            'notes' => $notes,
+            'total_amount' => $checkoutData['total_amount'],
+            'discount_amount' => $checkoutData['discount_amount'],
+            'final_amount' => $checkoutData['final_total'],
+            'voucher_code' => $checkoutData['applied_voucher']['code'] ?? null,
+            'status' => $paymentMethod === 'bank_transfer' ? 'awaiting_payment' : 'pending',
+            'payment_status' => $paymentMethod === 'bank_transfer' ? 'pending' : 'cod',
+            'created_at' => date('Y-m-d H:i:s')
+        ];
+
+        $orderId = $database->createOrder($orderData);
+
+        if (!$orderId) {
+            throw new Exception('Không thể tạo đơn hàng');
+        }
+
+        // Add order items
+        foreach ($checkoutData['items'] as $item) {
+            $orderItemData = [
+                'order_id' => $orderId,
+                'book_id' => $item['book_id'],
+                'quantity' => $item['quantity'],
+                'price' => $item['price'],
+                'total' => $item['price'] * $item['quantity']
+            ];
+
+            $database->insert('order_items', $orderItemData);
+
+            // Update book stock
+            $database->query(
+                "UPDATE books SET stock = stock - :quantity WHERE id = :book_id",
+                ['quantity' => $item['quantity'], 'book_id' => $item['book_id']]
+            );
+        }
+
+        // Update voucher usage if applied
+        if ($checkoutData['applied_voucher']) {
+            $database->updateVoucherUsage($checkoutData['applied_voucher']['code']);
+        }
+
+        // Clear cart and checkout data
+        $database->clearCart($userId);
+        unset($_SESSION['checkout_data']);
+        unset($_SESSION['applied_voucher']);
+
+        $database->commit();
+
+        // Redirect to order success page
+        header("Location: /DoAn_BookStore/view/order/order_success.php?order_id=" . $orderId);
+        exit();
+
+    } catch (Exception $e) {
+        $database->rollback();
+        $message = $e->getMessage();
+        $messageType = 'danger';
+    }
+}
+?>
+
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thanh toán - BookStore</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .payment-summary {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            position: sticky;
+            top: 20px;
+        }
+
+        .order-item {
+            border-bottom: 1px solid #eee;
+            padding: 10px 0;
+        }
+
+        .order-item:last-child {
+            border-bottom: none;
+        }
+
+        .book-image {
+            width: 50px;
+            height: 75px;
+            object-fit: cover;
+            border-radius: 5px;
+        }
+
+        .form-floating {
+            margin-bottom: 1rem;
+        }
+
+        .payment-method {
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .payment-method:hover {
+            border-color: #0d6efd;
+        }
+
+        .payment-method.selected {
+            border-color: #0d6efd;
+            background-color: #f8f9ff;
+        }
+
+        .payment-method input[type="radio"] {
+            display: none;
+        }
+
+        #qr-code-img {
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            padding: 10px;
+            background: white;
+        }
+
+        #bank-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        #bank-info p {
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .modal-body {
+            min-height: 300px;
+        }
+    </style>
+</head>
+
+<body>
+    <?php include_once __DIR__ . '/../navigation/navigation.php'; ?>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="/DoAn_BookStore/">Trang chủ</a></li>
+                        <li class="breadcrumb-item"><a href="/DoAn_BookStore/view/cart/cart.php">Giỏ hàng</a></li>
+                        <li class="breadcrumb-item active">Thanh toán</li>
+                    </ol>
+                </nav>
+
+                <h2><i class="fas fa-credit-card"></i> Thanh toán</h2>
+            </div>
+        </div>
+
+        <?php if ($message): ?>
+            <div class="alert alert-<?php echo $messageType; ?> alert-dismissible fade show" role="alert">
+                <?php echo htmlspecialchars($message); ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        <?php endif; ?>
+
+        <form method="POST">
+            <input type="hidden" name="action" value="place_order">
+
+            <div class="row">
+                <div class="col-lg-8">
+                    <!-- Customer Information -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5><i class="fas fa-user"></i> Thông tin khách hàng</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-floating">
+                                        <input type="text" class="form-control" id="customer_name" name="customer_name"
+                                            value="<?php echo htmlspecialchars($user->name ?? ''); ?>" required>
+                                        <label for="customer_name">Họ và tên *</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-floating">
+                                        <input type="tel" class="form-control" id="customer_phone" name="customer_phone"
+                                            value="<?php echo htmlspecialchars($user->phone ?? ''); ?>" required>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-floating">
+                                <input type="email" class="form-control" id="customer_email" name="customer_email"
+                                    value="<?php echo htmlspecialchars($user->email ?? ''); ?>">
+                            </div>
+                            <div class="form-floating">
+                                <textarea class="form-control" id="shipping_address" name="shipping_address"
+                                    style="height: 100px"
+                                    required><?php echo htmlspecialchars($user->address ?? ''); ?></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Payment Method -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5><i class="fas fa-wallet"></i> Phương thức thanh toán</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="payment-method" onclick="selectPaymentMethod('cod')">
+                                <input type="radio" name="payment_method" value="cod" id="cod" required>
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-money-bill-wave fa-2x text-success me-3"></i>
+                                    <div>
+                                        <h6 class="mb-1">Thanh toán khi nhận hàng (COD)</h6>
+                                        <small class="text-muted">Thanh toán bằng tiền mặt khi nhận hàng</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="payment-method" onclick="selectPaymentMethod('bank_transfer')">
+                                <input type="radio" name="payment_method" value="bank_transfer" id="bank_transfer">
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-university fa-2x text-primary me-3"></i>
+                                    <div>
+                                        <h6 class="mb-1">Chuyển khoản ngân hàng</h6>
+                                        <small class="text-muted">Chuyển khoản qua ngân hàng - Quét mã QR</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="payment-method" onclick="selectPaymentMethod('momo')">
+                                <input type="radio" name="payment_method" value="momo" id="momo">
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-mobile-alt fa-2x text-danger me-3"></i>
+                                    <div>
+                                        <h6 class="mb-1">Ví điện tử MoMo</h6>
+                                        <small class="text-muted">Thanh toán qua ví MoMo</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Order Notes -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5><i class="fas fa-sticky-note"></i> Ghi chú đơn hàng</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-floating">
+                                <textarea class="form-control" id="notes" name="notes" style="height: 100px"
+                                    placeholder="Ghi chú về đơn hàng (tùy chọn)"></textarea>
+                                <label for="notes">Ghi chú (tùy chọn)</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-4">
+                    <!-- Order Summary -->
+                    <div class="payment-summary">
+                        <h5 class="mb-3">Thông tin đơn hàng</h5>
+
+                        <!-- Order Items -->
+                        <div class="order-items mb-3">
+                            <?php foreach ($checkoutData['items'] as $item): ?>
+                                <div class="order-item">
+                                    <div class="d-flex">
+                                        <img src="/DoAn_BookStore/images/books/<?php echo htmlspecialchars($item['image']); ?>"
+                                            alt="<?php echo htmlspecialchars($item['title']); ?>" class="book-image me-3">
+                                        <div class="flex-grow-1">
+                                            <h6 class="mb-1"><?php echo htmlspecialchars($item['title']); ?></h6>
+                                            <small class="text-muted">x<?php echo $item['quantity']; ?></small>
+                                            <div class="text-end">
+                                                <strong>
+                                                    <?php
+                                                    $itemTotal = ($item['price'] * 1000) * $item['quantity'];
+                                                    echo number_format($itemTotal, 0, ',', '.');
+                                                    ?> VNĐ
+                                                </strong>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+
+                        <hr>
+
+                        <!-- Summary Details -->
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Tạm tính:</span>
+                            <span>
+                                <?php
+                                echo number_format($checkoutData['total_amount'] * 1000, 0, ',', '.');
+                                ?> VNĐ
+                            </span>
+                        </div>
+
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Phí vận chuyển:</span>
+                            <span class="text-success">Miễn phí</span>
+                        </div>
+
+                        <?php if ($checkoutData['applied_voucher'] && $checkoutData['discount_amount'] > 0): ?>
+                            <div class="d-flex justify-content-between mb-2 text-success">
+                                <span>
+                                    <i class="fas fa-ticket-alt"></i>
+                                    Giảm giá (<?php echo $checkoutData['applied_voucher']['code']; ?>):
+                                </span>
+                                <span>
+                                    -<?php echo number_format($checkoutData['discount_amount'] * 1000, 0, ',', '.'); ?> VNĐ
+                                </span>
+                            </div>
+                        <?php endif; ?>
+
+                        <hr>
+
+                        <div class="d-flex justify-content-between mb-4">
+                            <strong>Tổng cộng:</strong>
+                            <strong class="text-primary fs-5">
+                                <?php
+                                echo number_format($checkoutData['final_total'] * 1000, 0, ',', '.');
+                                ?> VNĐ
+                            </strong>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <button type="submit" class="btn btn-primary w-100 mb-3">
+                            <i class="fas fa-check"></i> Đặt hàng
+                        </button>
+
+                        <a href="/DoAn_BookStore/view/cart/cart.php" class="btn btn-outline-secondary w-100">
+                            <i class="fas fa-arrow-left"></i> Quay lại giỏ hàng
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- QR Code Modal -->
+    <div class="modal fade" id="qrCodeModal" tabindex="-1" aria-labelledby="qrCodeModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="qrCodeModalLabel">
+                        <i class="fas fa-qrcode"></i> Quét mã QR để chuyển khoản
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <div id="qr-loading" class="d-none">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Đang tạo mã QR...</span>
+                        </div>
+                        <p class="mt-2">Đang tạo mã QR...</p>
+                    </div>
+
+                    <div id="qr-content" class="d-none">
+                        <div class="mb-3">
+                            <img id="qr-code-img" src="" alt="QR Code" class="img-fluid" style="max-width: 250px;">
+                        </div>
+
+                        <div id="bank-info" class="text-start">
+                            <!-- Bank info will be populated here -->
+                        </div>
+
+                        <div class="alert alert-info mt-3">
+                            <small>
+                                <i class="fas fa-info-circle"></i>
+                                Vui lòng chuyển khoản theo đúng nội dung để đơn hàng được xử lý nhanh nhất.
+                            </small>
+                        </div>
+                    </div>
+
+                    <div id="qr-error" class="d-none">
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <span id="qr-error-message">Không thể tạo mã QR</span>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="retryGenerateQR()">
+                            <i class="fas fa-redo"></i> Thử lại
+                        </button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="button" class="btn btn-primary" onclick="confirmBankTransfer()">
+                        <i class="fas fa-check"></i> Đã chuyển khoản
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentAmount = <?php echo $checkoutData['final_total'] * 1000; ?>;
+        let qrModal;
+
+        function selectPaymentMethod(method) {
+            // Remove selected class from all payment methods
+            document.querySelectorAll('.payment-method').forEach(el => {
+                el.classList.remove('selected');
+            });
+
+            // Add selected class to clicked method
+            document.querySelector(`[onclick="selectPaymentMethod('${method}')"]`).classList.add('selected');
+
+            // Check the radio button
+            document.getElementById(method).checked = true;
+
+            // Handle bank transfer selection
+            if (method === 'bank_transfer') {
+                showQRModal();
+            }
+        }
+
+        function showQRModal() {
+            qrModal = new bootstrap.Modal(document.getElementById('qrCodeModal'));
+            qrModal.show();
+            generateQRCode(currentAmount);
+        }
+
+        // Set default payment method
+        document.addEventListener('DOMContentLoaded', function () {
+            selectPaymentMethod('cod');
+        });
+
+        async function generateQRCode(amount, orderId = 'TEMP') {
+            // Show loading
+            document.getElementById('qr-loading').classList.remove('d-none');
+            document.getElementById('qr-content').classList.add('d-none');
+            document.getElementById('qr-error').classList.add('d-none');
+
+            try {
+                const response = await fetch('/DoAn_BookStore/view/payment/make_bank_qr.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        amount: amount,
+                        order_id: orderId,
+                        content: `BookStore - Don hang #${orderId} - ${amount.toLocaleString()} VND`
+                    })
+                });
+
+                const result = await response.json();
+
+                // Hide loading
+                document.getElementById('qr-loading').classList.add('d-none');
+
+                if (result.success) {
+                    // Sử dụng file ảnh nếu có, không thì dùng base64
+                    const qrImageSrc = result.qr_image_path || result.qr_code;
+
+                    // Show QR code
+                    document.getElementById('qr-code-img').src = qrImageSrc;
+                    document.getElementById('bank-info').innerHTML = `
+                        <h6 class="text-primary mb-2">
+                            <i class="fas fa-university"></i> Thông tin chuyển khoản
+                        </h6>
+                        <p><strong>Ngân hàng:</strong> ${result.bank_info.bank_name}</p>
+                        <p><strong>Số tài khoản:</strong> <code>${result.bank_info.account_number}</code></p>
+                        <p><strong>Chủ tài khoản:</strong> ${result.bank_info.account_name}</p>
+                        <p><strong>Số tiền:</strong> <span class="text-danger fw-bold">${result.bank_info.amount.toLocaleString()} VNĐ</span></p>
+                        <p><strong>Nội dung:</strong> <code>${result.bank_info.content}</code></p>
+                        ${result.file_info ? `<small class="text-muted">File ảnh: ${result.file_info.file_size} bytes</small>` : ''}
+                        ${result.file_error ? `<small class="text-warning">Lỗi file: ${result.file_error}</small>` : ''}
+                    `;
+                    document.getElementById('qr-content').classList.remove('d-none');
+                } else {
+                    // Show error
+                    document.getElementById('qr-error-message').textContent = result.error;
+                    document.getElementById('qr-error').classList.remove('d-none');
+                }
+            } catch (error) {
+                console.error('Network error:', error);
+
+                // Hide loading
+                document.getElementById('qr-loading').classList.add('d-none');
+
+                // Show error
+                document.getElementById('qr-error-message').textContent = 'Lỗi kết nối: ' + error.message;
+                document.getElementById('qr-error').classList.remove('d-none');
+            }
+        }
+
+        function retryGenerateQR() {
+            generateQRCode(currentAmount);
+        }
+
+        function confirmBankTransfer() {
+            // Close modal
+            qrModal.hide();
+
+            // Show success message
+            const alertHtml = `
+                <div class="alert alert-info alert-dismissible fade show" role="alert">
+                    <i class="fas fa-info-circle"></i>
+                    Bạn đã chọn chuyển khoản ngân hàng. Vui lòng hoàn tất chuyển khoản sau khi đặt hàng.
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+
+            // Insert alert before the form
+            const form = document.querySelector('form');
+            form.insertAdjacentHTML('beforebegin', alertHtml);
+
+            // Auto remove alert after 5 seconds
+            setTimeout(() => {
+                const alert = document.querySelector('.alert-info');
+                if (alert) {
+                    const bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                }
+            }, 5000);
+        }
+
+        // Handle modal close - revert to COD if user didn't confirm
+        document.getElementById('qrCodeModal').addEventListener('hidden.bs.modal', function (event) {
+            // Check if bank transfer is still selected but user closed modal
+            const bankTransferRadio = document.getElementById('bank_transfer');
+            if (bankTransferRadio.checked) {
+                // Ask user if they want to keep bank transfer or switch back to COD
+                setTimeout(() => {
+                    if (confirm('Bạn có muốn tiếp tục với phương thức chuyển khoản ngân hàng không?')) {
+                        // Keep bank transfer selected
+                        selectPaymentMethod('bank_transfer');
+                    } else {
+                        // Switch back to COD
+                        selectPaymentMethod('cod');
+                    }
+                }, 100);
+            }
+        });
+
+        // Update the form submission to handle bank transfer
+        document.querySelector('form').addEventListener('submit', function (e) {
+            const paymentMethod = document.querySelector('input[name="payment_method"]:checked').value;
+
+            if (paymentMethod === 'bank_transfer') {
+                // Show confirmation for bank transfer
+                if (!confirm('Bạn đã chuyển khoản theo thông tin được cung cấp chưa?\n\nNhấn OK nếu đã chuyển khoản hoặc sẽ chuyển sau khi đặt hàng.\nNhấn Cancel để quay lại.')) {
+                    e.preventDefault();
+                    return false;
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>

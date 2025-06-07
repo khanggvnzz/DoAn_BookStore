@@ -1,5 +1,5 @@
 <?php
-
+require_once __DIR__ . '/UserModel.php';
 
 class Database
 {
@@ -130,8 +130,8 @@ class Database
         return $this->fetchAll($sql, $params);
     }
 
-    // Get pagination info for books
-    public function getBooksWithPagination($page = 1, $perPage = 18, $search = '', $category = '')
+    // Get pagination info for books with sort functionality
+    public function getBooksWithPagination($page = 1, $perPage = 18, $search = '', $category = '', $sort = 'newest')
     {
         $where = '';
         $params = [];
@@ -153,26 +153,60 @@ class Database
             $where = implode(' AND ', $conditions);
         }
 
-        // Get books for current page
-        $books = $this->fetchWithPagination('books', $page, $perPage, $where, $params);
+        // Get ORDER BY clause based on sort parameter
+        $orderBy = $this->getSortClause($sort);
+
+        // Get books for current page with custom sort
+        $books = $this->fetchWithPagination('books', $page, $perPage, $where, $params, $orderBy);
 
         // Get total count for pagination info
         $totalBooks = $this->count('books', $where, $params);
         $totalPages = ceil($totalBooks / $perPage);
+
+        // Calculate start and end record numbers
+        $offset = ($page - 1) * $perPage;
+        $start = $offset + 1;
+        $end = min($offset + $perPage, $totalBooks);
 
         return [
             'books' => $books,
             'pagination' => [
                 'current_page' => $page,
                 'per_page' => $perPage,
-                'total_books' => $totalBooks,
+                'total_records' => $totalBooks,
                 'total_pages' => $totalPages,
+                'start' => $start,
+                'end' => $end,
                 'has_previous' => $page > 1,
                 'has_next' => $page < $totalPages,
                 'previous_page' => $page > 1 ? $page - 1 : null,
                 'next_page' => $page < $totalPages ? $page + 1 : null
             ]
         ];
+    }
+
+    // Get sort clause based on sort parameter
+    private function getSortClause($sort)
+    {
+        switch ($sort) {
+            case 'oldest':
+                return 'created_at ASC';
+            case 'title_asc':
+                return 'title ASC';
+            case 'title_desc':
+                return 'title DESC';
+            case 'price_asc':
+                return 'price ASC';
+            case 'price_desc':
+                return 'price DESC';
+            case 'author_asc':
+                return 'author ASC';
+            case 'author_desc':
+                return 'author DESC';
+            case 'newest':
+            default:
+                return 'created_at DESC';
+        }
     }
 
     // Generate pagination HTML
@@ -182,13 +216,21 @@ class Database
             return '';
         }
 
+        // Get current URL parameters to maintain search, category, sort when paginating
+        $currentParams = $_GET;
+        unset($currentParams['page']); // Remove page param as we'll set it manually
+
+        $queryParams = http_build_query($currentParams);
+        $separator = empty($queryParams) ? '?' : '&';
+
         $html = '<nav aria-label="Phân trang sách">';
         $html .= '<ul class="pagination justify-content-center">';
 
         // Previous button
         if ($pagination['has_previous']) {
+            $prevUrl = $baseUrl . ($queryParams ? '?' . $queryParams . '&page=' : '?page=') . $pagination['previous_page'];
             $html .= '<li class="page-item">';
-            $html .= '<a class="page-link" href="' . $baseUrl . '?page=' . $pagination['previous_page'] . '">';
+            $html .= '<a class="page-link" href="' . $prevUrl . '">';
             $html .= '<i class="fas fa-chevron-left"></i> Trước';
             $html .= '</a></li>';
         } else {
@@ -207,8 +249,9 @@ class Database
 
         // Show first page if not in range
         if ($startPage > 1) {
+            $firstUrl = $baseUrl . ($queryParams ? '?' . $queryParams . '&page=1' : '?page=1');
             $html .= '<li class="page-item">';
-            $html .= '<a class="page-link" href="' . $baseUrl . '?page=1">1</a>';
+            $html .= '<a class="page-link" href="' . $firstUrl . '">1</a>';
             $html .= '</li>';
 
             if ($startPage > 2) {
@@ -223,8 +266,9 @@ class Database
                 $html .= '<span class="page-link">' . $i . '</span>';
                 $html .= '</li>';
             } else {
+                $pageUrl = $baseUrl . ($queryParams ? '?' . $queryParams . '&page=' : '?page=') . $i;
                 $html .= '<li class="page-item">';
-                $html .= '<a class="page-link" href="' . $baseUrl . '?page=' . $i . '">' . $i . '</a>';
+                $html .= '<a class="page-link" href="' . $pageUrl . '">' . $i . '</a>';
                 $html .= '</li>';
             }
         }
@@ -235,15 +279,17 @@ class Database
                 $html .= '<li class="page-item disabled"><span class="page-link">...</span></li>';
             }
 
+            $lastUrl = $baseUrl . ($queryParams ? '?' . $queryParams . '&page=' : '?page=') . $totalPages;
             $html .= '<li class="page-item">';
-            $html .= '<a class="page-link" href="' . $baseUrl . '?page=' . $totalPages . '">' . $totalPages . '</a>';
+            $html .= '<a class="page-link" href="' . $lastUrl . '">' . $totalPages . '</a>';
             $html .= '</li>';
         }
 
         // Next button
         if ($pagination['has_next']) {
+            $nextUrl = $baseUrl . ($queryParams ? '?' . $queryParams . '&page=' : '?page=') . $pagination['next_page'];
             $html .= '<li class="page-item">';
-            $html .= '<a class="page-link" href="' . $baseUrl . '?page=' . $pagination['next_page'] . '">';
+            $html .= '<a class="page-link" href="' . $nextUrl . '">';
             $html .= 'Sau <i class="fas fa-chevron-right"></i>';
             $html .= '</a></li>';
         } else {
@@ -258,8 +304,8 @@ class Database
         // Add pagination info
         $html .= '<div class="text-center mt-3">';
         $html .= '<small class="text-muted">';
-        $html .= 'Hiển thị trang ' . $pagination['current_page'] . ' / ' . $pagination['total_pages'];
-        $html .= ' (' . $pagination['total_books'] . ' cuốn sách)';
+        $html .= 'Hiển thị ' . $pagination['start'] . '-' . $pagination['end'] . ' trong tổng số ' . $pagination['total_records'] . ' cuốn sách';
+        $html .= ' (Trang ' . $pagination['current_page'] . '/' . $pagination['total_pages'] . ')';
         $html .= '</small>';
         $html .= '</div>';
 
@@ -382,7 +428,7 @@ class Database
      */
     public function getUserById($id)
     {
-        $userData = $this->fetch("SELECT * FROM users WHERE id = :id LIMIT 1", ['id' => $id]);
+        $userData = $this->fetch("SELECT * FROM users WHERE user_id = :user_id LIMIT 1", ['user_id' => $id]);
         if ($userData) {
             return new User($userData);
         }
@@ -412,7 +458,7 @@ class Database
     {
         $user->sanitize();
         $data = $user->toArrayForDB();
-        return $this->update('users', $data, 'id = :id', ['id' => $user->id]);
+        return $this->update('users', $data, 'user_id = :user_id', ['user_id' => $user->id]);
     }
 
     /**
@@ -420,7 +466,7 @@ class Database
      */
     public function deleteUser($id)
     {
-        return $this->delete('users', 'id = :id', ['id' => $id]);
+        return $this->delete('users', 'user_id = :user_id', ['user_id' => $id]);
     }
 
     /**
@@ -461,7 +507,7 @@ class Database
         $params = ['username' => $username];
 
         if ($excludeId) {
-            $query .= " AND id != :excludeId";
+            $query .= " AND user_id != :excludeId";
             $params['excludeId'] = $excludeId;
         }
 
@@ -478,7 +524,7 @@ class Database
         $params = ['email' => $email];
 
         if ($excludeId) {
-            $query .= " AND id != :excludeId";
+            $query .= " AND user_id != :excludeId";
             $params['excludeId'] = $excludeId;
         }
 
@@ -569,8 +615,8 @@ class Database
         return $this->update(
             'users',
             ['password' => $hashedPassword],
-            'id = :id',
-            ['id' => $userId]
+            'user_id = :user_id',
+            ['user_id' => $userId]
         );
     }
 
@@ -592,8 +638,8 @@ class Database
                     $this->update(
                         'users',
                         ['last_login' => date('Y-m-d H:i:s')],
-                        'id = :id',
-                        ['id' => $userData['id']]
+                        'user_id = :user_id',
+                        ['user_id' => $userData['id']]
                     );
 
                     return $userData;
@@ -612,7 +658,7 @@ class Database
     public function changeUserPassword($userId, $currentPassword, $newPassword)
     {
         // Get user data
-        $userData = $this->fetch("SELECT * FROM users WHERE id = :id", ['id' => $userId]);
+        $userData = $this->fetch("SELECT * FROM users WHERE user_id = :user_id", ['user_id' => $userId]);
 
         if (!$userData) {
             return ['success' => false, 'message' => 'Người dùng không tồn tại'];
@@ -638,7 +684,7 @@ class Database
      */
     public function resetUserPassword($userId, $newPassword)
     {
-        $userData = $this->fetch("SELECT username FROM users WHERE id = :id", ['id' => $userId]);
+        $userData = $this->fetch("SELECT username FROM users WHERE user_id = :user_id", ['user_id' => $userId]);
 
         if ($userData) {
             return $this->updateUserPassword($userId, $newPassword, $userData['username']);
@@ -677,6 +723,341 @@ class Database
             'valid' => empty($errors),
             'errors' => $errors
         ];
+    }
+
+    /**
+     * Cart-specific methods
+     */
+
+    /**
+     * Add item to cart or update quantity if exists
+     */
+    public function addToCart($userId, $bookId, $quantity = 1)
+    {
+        try {
+            // Check if item already exists in cart
+            $existingItem = $this->fetch(
+                "SELECT * FROM cart WHERE user_id = :user_id AND id = :id",
+                ['user_id' => $userId, 'id' => $bookId]
+            );
+
+            if ($existingItem) {
+                // Update quantity if item exists
+                $newQuantity = $existingItem['quantity'] + $quantity;
+                return $this->update(
+                    'cart',
+                    ['quantity' => $newQuantity],
+                    'cart_id = :cart_id',
+                    ['cart_id' => $existingItem['cart_id']]
+                );
+            } else {
+                // Insert new item
+                return $this->insert('cart', [
+                    'user_id' => $userId,
+                    'id' => $bookId,
+                    'quantity' => $quantity,
+                ]);
+            }
+        } catch (Exception $e) {
+            error_log('Add to cart error: ' . $e->getMessage());
+            throw $e; // Re-throw để có thể debug
+        }
+    }
+
+    /**
+     * Get all cart items for a specific user.
+     *
+     * @param int $userId The ID of the user.
+     * @return array Array of cart items with book details.
+     * @throws InvalidArgumentException If userId is invalid.
+     * @throws RuntimeException If database query fails.
+     */
+    public function getCartItems(int $userId): array
+    {
+        if ($userId <= 0) {
+            throw new InvalidArgumentException('User ID must be a positive integer.');
+        }
+
+        try {
+            return $this->fetchAll(
+                "SELECT cart.cart_id, cart.user_id, cart.id, cart.quantity, 
+                    books.title, books.author, books.price, books.image, books.stock
+             FROM cart 
+             INNER JOIN books ON cart.id = books.id 
+             WHERE cart.user_id = :user_id 
+             ORDER BY cart.cart_id DESC",
+                ['user_id' => $userId]
+            ) ?: [];
+        } catch (Exception $e) {
+            throw new RuntimeException('Failed to fetch cart items: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get a specific cart item by cart_id.
+     *
+     * @param int $cartId The ID of the cart item.
+     * @return array|null Array of cart item details or null if not found.
+     * @throws InvalidArgumentException If cartId is invalid.
+     * @throws RuntimeException If database query fails.
+     */
+    public function getCartItemById(int $cartId): ?array
+    {
+        if ($cartId <= 0) {
+            throw new InvalidArgumentException('Cart ID must be a positive integer.');
+        }
+
+        try {
+            $result = $this->fetch(
+                "SELECT cart.cart_id, cart.user_id, cart.id, cart.quantity, 
+                    books.title, books.author, books.price, books.image, books.stock
+             FROM cart 
+             INNER JOIN books ON cart.id = books.id 
+             WHERE cart.cart_id = :cart_id",
+                ['cart_id' => $cartId]
+            );
+
+            return $result ?: null;
+        } catch (Exception $e) {
+            throw new RuntimeException('Failed to fetch cart item: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Update cart item quantity
+     */
+    public function updateCartQuantity($cartId, $quantity)
+    {
+        if ($quantity <= 0) {
+            return $this->removeFromCart($cartId);
+        }
+
+        return $this->update(
+            'cart',
+            ['quantity' => $quantity],
+            'cart_id = :cart_id',
+            ['cart_id' => $cartId]
+        );
+    }
+
+    /**
+     * Remove item from cart
+     */
+    public function removeFromCart($cartId)
+    {
+        return $this->delete('cart', 'cart_id = :cart_id', ['cart_id' => $cartId]);
+    }
+
+    /**
+     * Remove specific item from user's cart
+     */
+    public function removeFromCartByUserAndBook($userId, $bookId)
+    {
+        return $this->delete(
+            'cart',
+            'user_id = :user_id AND book_id = :book_id',
+            ['user_id' => $userId, 'book_id' => $bookId]
+        );
+    }
+
+    /**
+     * Clear all items from user's cart
+     */
+    public function clearCart($userId)
+    {
+        return $this->delete('cart', 'user_id = :user_id', ['user_id' => $userId]);
+    }
+
+    /**
+     * Get cart item count for a user
+     */
+    public function getCartItemCount($userId)
+    {
+        $result = $this->fetch(
+            "SELECT SUM(quantity) as total_items FROM cart WHERE user_id = :user_id",
+            ['user_id' => $userId]
+        );
+        return $result ? (int) $result['total_items'] : 0;
+    }
+
+    /**
+     * Get the total value of all items in a user's cart.
+     *
+     * @param int $userId The ID of the user.
+     * @return float The total value of cart items.
+     * @throws InvalidArgumentException If userId is invalid.
+     * @throws RuntimeException If database query fails.
+     */
+    public function getCartTotal(int $userId): float
+    {
+        if ($userId <= 0) {
+            throw new InvalidArgumentException('User ID must be a positive integer.');
+        }
+
+        try {
+            $result = $this->fetch(
+                "SELECT SUM(cart.quantity * books.price) as total_amount 
+             FROM cart 
+             INNER JOIN books ON cart.id = books.id 
+             WHERE cart.user_id = :user_id",
+                ['user_id' => $userId]
+            );
+
+            return $result && isset($result['total_amount']) ? (float) $result['total_amount'] : 0.0;
+        } catch (Exception $e) {
+            throw new RuntimeException('Failed to calculate cart total: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Check if book is in user's cart
+     */
+    public function isBookInCart($userId, $bookId)
+    {
+        return $this->exists(
+            'cart',
+            'user_id = :user_id AND book_id = :book_id',
+            ['user_id' => $userId, 'book_id' => $bookId]
+        );
+    }
+
+    /**
+     * Get cart item quantity for specific book
+     */
+    public function getCartItemQuantity($userId, $bookId)
+    {
+        $result = $this->fetch(
+            "SELECT quantity FROM cart WHERE user_id = :user_id AND book_id = :book_id",
+            ['user_id' => $userId, 'book_id' => $bookId]
+        );
+        return $result ? (int) $result['quantity'] : 0;
+    }
+
+    /**
+     * Validate cart items for a user by checking if requested quantities exceed available stock.
+     *
+     * @param int $userId The ID of the user.
+     * @return array An array containing validation status and any errors.
+     *               Format: ['valid' => bool, 'errors' => array]
+     * @throws InvalidArgumentException If userId is invalid.
+     * @throws RuntimeException If database query fails.
+     */
+    public function validateCartItems(int $userId): array
+    {
+        if ($userId <= 0) {
+            throw new InvalidArgumentException('User ID must be a positive integer.');
+        }
+
+        try {
+            $cartItems = $this->fetchAll(
+                "SELECT cart.cart_id, cart.quantity, cart.id, books.title, books.stock
+             FROM cart 
+             INNER JOIN books ON cart.id = books.id 
+             WHERE cart.user_id = :user_id",
+                ['user_id' => $userId]
+            ) ?: [];
+
+            $errors = [];
+            foreach ($cartItems as $item) {
+                if ($item['quantity'] > $item['stock']) {
+                    $errors[] = [
+                        'cart_id' => $item['cart_id'],
+                        'book_id' => $item['id'],
+                        'title' => $item['title'],
+                        'requested' => $item['quantity'],
+                        'available' => $item['stock'],
+                        'message' => "Sách '{$item['title']}' chỉ còn {$item['stock']} cuốn"
+                    ];
+                }
+            }
+
+            return [
+                'valid' => empty($errors),
+                'errors' => $errors
+            ];
+        } catch (Exception $e) {
+            throw new RuntimeException('Failed to validate cart items: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get cart summary for a user
+     */
+    public function getCartSummary($userId)
+    {
+        $items = $this->getCartItems($userId);
+        $totalItems = $this->getCartItemCount($userId);
+        $totalAmount = $this->getCartTotal($userId);
+
+        return [
+            'items' => $items,
+            'total_items' => $totalItems,
+            'total_amount' => $totalAmount,
+            'item_count' => count($items)
+        ];
+    }
+
+    /**
+     * Merge carts (useful when user logs in and has items in session cart)
+     */
+    public function mergeCarts($userId, $sessionCartItems)
+    {
+        $this->beginTransaction();
+
+        try {
+            foreach ($sessionCartItems as $item) {
+                $this->addToCart($userId, $item['book_id'], $item['quantity']);
+            }
+
+            $this->commit();
+            return true;
+        } catch (Exception $e) {
+            $this->rollback();
+            error_log('Merge carts error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Clean up cart items for books that no longer exist
+     */
+    public function cleanupCart()
+    {
+        return $this->delete(
+            'cart',
+            'book_id NOT IN (SELECT id FROM books)'
+        );
+    }
+
+    /**
+     * Create new order
+     */
+    public function createOrder($orderData)
+    {
+        try {
+            $result = $this->insert('orders', $orderData);
+            return $result ? $this->conn->lastInsertId() : false;
+        } catch (Exception $e) {
+            error_log('Create order error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Update voucher usage count
+     */
+    public function updateVoucherUsage($voucherCode)
+    {
+        $configFile = __DIR__ . '/../config/vouchers.json';
+        if (file_exists($configFile)) {
+            $vouchers = json_decode(file_get_contents($configFile), true);
+            if (isset($vouchers[$voucherCode])) {
+                $vouchers[$voucherCode]['used_count']++;
+                file_put_contents($configFile, json_encode($vouchers, JSON_PRETTY_PRINT));
+                return true;
+            }
+        }
+        return false;
     }
 
 }

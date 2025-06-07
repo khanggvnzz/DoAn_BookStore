@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($userData) {
                 // Đăng nhập thành công
-                $_SESSION['user_id'] = $userData['id'];
+                $_SESSION['user_id'] = $userData['user_id'];
                 $_SESSION['username'] = $userData['username'];
                 $_SESSION['user_name'] = $userData['name'];
                 $_SESSION['user_email'] = $userData['email'];
@@ -72,11 +72,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     unset($_SESSION['redirect_after_login']);
                 } elseif ($userData['permission'] === 'admin') {
                     // Redirect admin to dashboard
-                    $redirect = '/DoAn_BookStore/?controller=admin&action=dashboard';
+                    $redirect = '/DoAn_BookStore/';
                 }
 
+                // Clear any output buffer and redirect
+                ob_clean();
                 header('Location: ' . $redirect);
-                exit;
+                exit();
             } else {
                 $errors['login'] = 'Tên đăng nhập hoặc mật khẩu không đúng';
             }
@@ -333,55 +335,19 @@ if (!isset($_SESSION['user_id']) && isset($_COOKIE['remember_user'])) {
             }
         }
 
-        function showAlert(message, type) {
-            // Remove existing alerts
-            const existingAlerts = document.querySelectorAll('.alert');
-            existingAlerts.forEach(alert => alert.remove());
-
-            const alertDiv = document.createElement('div');
-            alertDiv.className = `alert alert-${type}`;
-            alertDiv.innerHTML = `<i class="fas fa-exclamation-circle me-2"></i>${message}`;
-
-            const form = document.getElementById('loginForm');
-            form.parentNode.insertBefore(alertDiv, form);
-
-            // Auto remove after 3 seconds
-            setTimeout(() => {
-                if (alertDiv && alertDiv.parentNode) {
-                    alertDiv.style.opacity = '0';
-                    alertDiv.style.transition = 'opacity 0.3s ease';
-                    setTimeout(() => {
-                        if (alertDiv && alertDiv.parentNode) {
-                            if (alertDiv && alertDiv.parentNode) {
-                                alertDiv.remove(); alertDiv.remove();
-
-
-
-
-
-
-
-
-
-</html ></body >    </script> } }, 3000); } }, 300); } }
-    }, 300);
-    }
-    }, 3000);
-    }
-
-    // Keyboard shortcuts
-    document.addEventListener('keydown', function (e) {
-    // Alt + D for demo admin account
-    if (e.altKey && e.key.toLowerCase() === 'd') {
-    e.preventDefault();
-    fillDemoAccount('admin', 'admin123');
-    }
-    // Alt + U for demo user account
-    if (e.altKey && e.key.toLowerCase() === 'u') {
-    e.preventDefault();
-    fillDemoAccount('user', 'user123');
-    }
-    });
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function (e) {
+            // Alt + D for demo admin account
+            if (e.altKey && e.key.toLowerCase() === 'd') {
+                e.preventDefault();
+                fillDemoAccount('admin', 'admin123');
+            }
+            // Alt + U for demo user account
+            if (e.altKey && e.key.toLowerCase() === 'u') {
+                e.preventDefault();
+                fillDemoAccount('user', 'user123');
+            }
+        });
     </script>
 </body>
 

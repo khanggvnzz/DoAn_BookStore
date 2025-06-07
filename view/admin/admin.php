@@ -49,6 +49,35 @@ function saveActiveBanners($banners) {
     return file_put_contents($configFile, json_encode($banners, JSON_PRETTY_PRINT));
 }
 
+// Voucher management functions
+function getVouchers() {
+    $configFile = __DIR__ . '/../../config/vouchers.json';
+    if (file_exists($configFile)) {
+        $content = file_get_contents($configFile);
+        return json_decode($content, true) ?: [];
+    }
+    return [];
+}
+
+function saveVouchers($vouchers) {
+    $configDir = __DIR__ . '/../../config/';
+    if (!is_dir($configDir)) {
+        mkdir($configDir, 0755, true);
+    }
+    
+    $configFile = $configDir . 'vouchers.json';
+    return file_put_contents($configFile, json_encode($vouchers, JSON_PRETTY_PRINT));
+}
+
+function generateVoucherCode($length = 8) {
+    $characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    $code = '';
+    for ($i = 0; $i < $length; $i++) {
+        $code .= $characters[rand(0, strlen($characters) - 1)];
+    }
+    return $code;
+}
+
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -190,7 +219,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'permission' => $permission,
                 ];
 
-                $result = $database->update('users', $userData, 'id = :id', ['id' => $id]);
+                $result = $database->update('users', $userData, 'user_id = :user_id', ['user_id' => $id]);
                 if ($result) {
                     $message = "Cập nhật người dùng thành công!";
                 } else {
@@ -207,7 +236,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($id == $_SESSION['user_id']) {
                     $error = "Không thể xóa tài khoản của chính mình!";
                 } else {
-                    $result = $database->delete('users', 'id = :id', ['id' => $id]);
+                    $result = $database->delete('users', 'user_id = :user_id', ['user_id' => $id]);
                     if ($result) {
                         $message = "Xóa người dùng thành công!";
                     } else {
@@ -285,17 +314,102 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Lỗi khi xóa banner: " . $e->getMessage();
             }
             break;
+
+        case 'add_voucher':
+            try {
+                $vouchers = getVouchers();
+                
+                // Generate unique voucher code
+                do {
+                    $code = generateVoucherCode();
+                } while (array_key_exists($code, $vouchers));
+                
+                $voucher = [
+                    'code' => $code,
+                    'name' => trim($_POST['name']),
+                    'description' => trim($_POST['description']),
+                    'min_order_amount' => floatval($_POST['min_order_amount']),
+                    'discount_percent' => floatval($_POST['discount_percent']),
+                    'quantity' => intval($_POST['quantity']),
+                    'used_count' => 0,
+                    'is_active' => true,
+                    'created_at' => date('Y-m-d H:i:s'),
+                    'expires_at' => $_POST['expires_at'] ?: null
+                ];
+                
+                $vouchers[$code] = $voucher;
+                
+                if (saveVouchers($vouchers)) {
+                    $message = "Tạo voucher thành công! Mã voucher: " . $code;
+                } else {
+                    $error = "Lỗi khi tạo voucher";
+                }
+            } catch (Exception $e) {
+                $error = "Lỗi khi tạo voucher: " . $e->getMessage();
+            }
+            break;
+
+        case 'update_voucher':
+            try {
+                $vouchers = getVouchers();
+                $code = $_POST['voucher_code'];
+                
+                if (isset($vouchers[$code])) {
+                    $vouchers[$code]['name'] = trim($_POST['name']);
+                    $vouchers[$code]['description'] = trim($_POST['description']);
+                    $vouchers[$code]['min_order_amount'] = floatval($_POST['min_order_amount']);
+                    $vouchers[$code]['discount_percent'] = floatval($_POST['discount_percent']);
+                    $vouchers[$code]['quantity'] = intval($_POST['quantity']);
+                    $vouchers[$code]['is_active'] = isset($_POST['is_active']);
+                    $vouchers[$code]['expires_at'] = $_POST['expires_at'] ?: null;
+                    
+                    if (saveVouchers($vouchers)) {
+                        $message = "Cập nhật voucher thành công!";
+                    } else {
+                        $error = "Lỗi khi cập nhật voucher";
+                    }
+                } else {
+                    $error = "Voucher không tồn tại";
+                }
+            } catch (Exception $e) {
+                $error = "Lỗi khi cập nhật voucher: " . $e->getMessage();
+            }
+            break;
+
+        case 'delete_voucher':
+            try {
+                $vouchers = getVouchers();
+                $code = $_POST['voucher_code'];
+                
+                if (isset($vouchers[$code])) {
+                    unset($vouchers[$code]);
+                    
+                    if (saveVouchers($vouchers)) {
+                        $message = "Xóa voucher thành công!";
+                    } else {
+                        $error = "Lỗi khi xóa voucher";
+                    }
+                } else {
+                    $error = "Voucher không tồn tại";
+                }
+            } catch (Exception $e) {
+                $error = "Lỗi khi xóa voucher: " . $e->getMessage();
+            }
+            break;
     }
 }
 
 // Get data for display
 $books = $database->fetchAll("SELECT * FROM books ORDER BY title");
-$users = $database->fetchAll("SELECT id, username, name, email, permission FROM users ORDER BY username");
+$users = $database->fetchAll("SELECT user_id, username, name, email, permission FROM users ORDER BY username");
 $categories = $database->fetchAll("SELECT DISTINCT category FROM books WHERE category IS NOT NULL AND category != '' ORDER BY category");
 
 // Get banner data
 $allBanners = getBannerFiles();
 $activeBanners = getActiveBanners();
+
+// Get voucher data
+$vouchers = getVouchers();
 
 // Get statistics
 $total_books = $database->count('books');
@@ -348,6 +462,11 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                         <li class="nav-item">
                             <a class="nav-link" href="#banners" data-bs-toggle="tab">
                                 <i class="fas fa-images"></i> Quản lý Banner
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#vouchers" data-bs-toggle="tab">
+                                <i class="fas fa-ticket-alt"></i> Quản lý Voucher
                             </a>
                         </li>
                         <li class="nav-item">
@@ -430,11 +549,11 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                         <div class="card-body">
                                             <div class="d-flex justify-content-between">
                                                 <div>
-                                                    <h5 class="card-title">Danh mục</h5>
-                                                    <h2><?php echo $total_categories; ?></h2>
+                                                    <h5 class="card-title">Voucher</h5>
+                                                    <h2><?php echo count($vouchers); ?></h2>
                                                 </div>
                                                 <div class="align-self-center">
-                                                    <i class="fas fa-tags fa-2x"></i>
+                                                    <i class="fas fa-ticket-alt fa-2x"></i>
                                                 </div>
                                             </div>
                                         </div>
@@ -585,7 +704,7 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                             <tbody>
                                                 <?php foreach ($users as $user): ?>
                                                     <tr>
-                                                        <td><?php echo $user['id']; ?></td>
+                                                        <td><?php echo $user['user_id']; ?></td>
                                                         <td><?php echo htmlspecialchars($user['username']); ?></td>
                                                         <td><?php echo htmlspecialchars($user['email']); ?></td>
                                                         <td>
@@ -600,9 +719,9 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                                                     onclick="editUser(<?php echo htmlspecialchars(json_encode($user)); ?>)">
                                                                     <i class="fas fa-edit"></i>
                                                                 </button>
-                                                                <?php if ($user['id'] != $_SESSION['user_id']): ?>
+                                                                <?php if ($user['user_id'] != $_SESSION['user_id']): ?>
                                                                     <button class="btn btn-outline-danger"
-                                                                        onclick="deleteUser(<?php echo $user['id']; ?>, '<?php echo htmlspecialchars($user['username']); ?>')">
+                                                                        onclick="deleteUser(<?php echo $user['user_id']; ?>, '<?php echo htmlspecialchars($user['username']); ?>')">
                                                                         <i class="fas fa-trash"></i>
                                                                     </button>
                                                                 <?php endif; ?>
@@ -725,6 +844,106 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                                 </button>
                                             </div>
                                         </form>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Voucher Management Tab -->
+                        <div class="tab-pane fade" id="vouchers">
+                            <div class="d-flex justify-content-between align-items-center mb-4">
+                                <h2><i class="fas fa-ticket-alt"></i> Quản lý Voucher</h2>
+                                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addVoucherModal">
+                                    <i class="fas fa-plus"></i> Tạo Voucher Mới
+                                </button>
+                            </div>
+
+                            <div class="card">
+                                <div class="card-body">
+                                    <?php if (empty($vouchers)): ?>
+                                        <div class="text-center py-4">
+                                            <i class="fas fa-ticket-alt fa-3x text-muted mb-3"></i>
+                                            <h5>Chưa có voucher nào</h5>
+                                            <p class="text-muted">Tạo voucher đầu tiên để khuyến mãi cho khách hàng!</p>
+                                        </div>
+                                    <?php else: ?>
+                                        <div class="table-responsive">
+                                            <table class="table table-striped">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Mã Voucher</th>
+                                                        <th>Tên</th>
+                                                        <th>Đơn tối thiểu</th>
+                                                        <th>Giảm giá</th>
+                                                        <th>Số lượng</th>
+                                                        <th>Đã dùng</th>
+                                                        <th>Hạn sử dụng</th>
+                                                        <th>Trạng thái</th>
+                                                        <th>Thao tác</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <?php foreach ($vouchers as $code => $voucher): ?>
+                                                        <tr>
+                                                            <td>
+                                                                <code class="bg-light p-1 rounded"><?php echo $code; ?></code>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($voucher['name']); ?></td>
+                                                            <td>
+                                                                <?php echo number_format($voucher['min_order_amount'] * 1000, 0, ',', '.'); ?> VNĐ
+                                                            </td>
+                                                            <td>
+                                                                <span class="badge bg-success">
+                                                                    <?php echo $voucher['discount_percent']; ?>%
+                                                                </span>
+                                                            </td>
+                                                            <td><?php echo $voucher['quantity']; ?></td>
+                                                            <td>
+                                                                <span class="badge <?php echo $voucher['used_count'] >= $voucher['quantity'] ? 'bg-danger' : 'bg-info'; ?>">
+                                                                    <?php echo $voucher['used_count']; ?>
+                                                                </span>
+                                                            </td>
+                                                            <td>
+                                                                <?php if ($voucher['expires_at']): ?>
+                                                                    <?php 
+                                                                    $expiry = new DateTime($voucher['expires_at']);
+                                                                    $now = new DateTime();
+                                                                    $isExpired = $expiry < $now;
+                                                                    ?>
+                                                                    <span class="<?php echo $isExpired ? 'text-danger' : 'text-success'; ?>">
+                                                                        <?php echo $expiry->format('d/m/Y'); ?>
+                                                                    </span>
+                                                                <?php else: ?>
+                                                                    <span class="text-muted">Không giới hạn</span>
+                                                                <?php endif; ?>
+                                                            </td>
+                                                            <td>
+                                                                <?php 
+                                                                $isActive = $voucher['is_active'] && 
+                                                                           $voucher['used_count'] < $voucher['quantity'] &&
+                                                                           (!$voucher['expires_at'] || new DateTime($voucher['expires_at']) >= new DateTime());
+                                                                ?>
+                                                                <span class="badge <?php echo $isActive ? 'bg-success' : 'bg-secondary'; ?>">
+                                                                    <?php echo $isActive ? 'Hoạt động' : 'Không hoạt động'; ?>
+                                                                </span>
+                                                            </td>
+                                                            <td>
+                                                                <div class="btn-group btn-group-sm">
+                                                                    <button class="btn btn-outline-primary" 
+                                                                            onclick="editVoucher('<?php echo $code; ?>', <?php echo htmlspecialchars(json_encode($voucher)); ?>)">
+                                                                        <i class="fas fa-edit"></i>
+                                                                    </button>
+                                                                    <button class="btn btn-outline-danger" 
+                                                                            onclick="deleteVoucher('<?php echo $code; ?>', '<?php echo htmlspecialchars($voucher['name']); ?>')">
+                                                                        <i class="fas fa-trash"></i>
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    <?php endforeach; ?>
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     <?php endif; ?>
                                 </div>
                             </div>
@@ -1030,10 +1249,176 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
         </div>
     </div>
 
+    <!-- Add Voucher Modal -->
+    <div class="modal fade" id="addVoucherModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Tạo Voucher Mới</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST">
+                    <div class="modal-body">
+                        <input type="hidden" name="action" value="add_voucher">
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Tên Voucher</label>
+                                    <input type="text" class="form-control" name="name" required 
+                                           placeholder="Ví dụ: Giảm giá mùa hè">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Hạn sử dụng (tùy chọn)</label>
+                                    <input type="date" class="form-control" name="expires_at">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Mô tả</label>
+                            <textarea class="form-control" name="description" rows="2" 
+                                      placeholder="Mô tả về voucher này..."></textarea>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Đơn giá tối thiểu (nghìn VNĐ)</label>
+                                    <input type="number" step="0.01" class="form-control" name="min_order_amount" 
+                                           required placeholder="Ví dụ: 100 = 100,000 VNĐ">
+                                    <small class="form-text text-muted">Đơn hàng tối thiểu để áp dụng voucher</small>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Phần trăm giảm (%)</label>
+                                    <input type="number" step="0.01" min="0" max="100" class="form-control" 
+                                           name="discount_percent" required placeholder="Ví dụ: 10">
+                                    <small class="form-text text-muted">Từ 0% đến 100%</small>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Số lượng voucher</label>
+                                    <input type="number" min="1" class="form-control" name="quantity" 
+                                           required placeholder="Ví dụ: 100">
+                                    <small class="form-text text-muted">Tổng số voucher có thể sử dụng</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>Lưu ý:</strong> Mã voucher sẽ được tạo tự động khi bạn tạo voucher.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Tạo Voucher
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Voucher Modal -->
+    <div class="modal fade" id="editVoucherModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Sửa Voucher</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST">
+                    <div class="modal-body">
+                        <input type="hidden" name="action" value="update_voucher">
+                        <input type="hidden" name="voucher_code" id="edit_voucher_code">
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Mã Voucher</label>
+                            <input type="text" class="form-control" id="edit_voucher_code_display" readonly>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Tên Voucher</label>
+                                    <input type="text" class="form-control" name="name" id="edit_voucher_name" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Hạn sử dụng (tùy chọn)</label>
+                                    <input type="date" class="form-control" name="expires_at" id="edit_voucher_expires">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Mô tả</label>
+                            <textarea class="form-control" name="description" id="edit_voucher_description" rows="2"></textarea>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Đơn giá tối thiểu (nghìn VNĐ)</label>
+                                    <input type="number" step="0.01" class="form-control" name="min_order_amount" 
+                                           id="edit_voucher_min_amount" required>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Phần trăm giảm (%)</label>
+                                    <input type="number" step="0.01" min="0" max="100" class="form-control" 
+                                           name="discount_percent" id="edit_voucher_discount" required>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Số lượng voucher</label>
+                                    <input type="number" min="1" class="form-control" name="quantity" 
+                                           id="edit_voucher_quantity" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="is_active" 
+                                       id="edit_voucher_active">
+                                <label class="form-check-label" for="edit_voucher_active">
+                                    Kích hoạt voucher
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Cập nhật
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Delete Banner Form -->
     <form id="deleteBannerForm" method="POST" style="display: none;">
         <input type="hidden" name="action" value="delete_banner">
         <input type="hidden" name="banner_file" id="delete_banner_file">
+    </form>
+
+    <!-- Delete Voucher Form -->
+    <form id="deleteVoucherForm" method="POST" style="display: none;">
+        <input type="hidden" name="action" value="delete_voucher">
+        <input type="hidden" name="voucher_code" id="delete_voucher_code">
     </form>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -1076,7 +1461,7 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
 
         // User functions
         function editUser(user) {
-            document.getElementById('edit_user_id').value = user.id;
+            document.getElementById('edit_user_id').value = user.user_id;
             document.getElementById('edit_username').value = user.username;
             document.getElementById('edit_email').value = user.email;
             document.getElementById('edit_permission').value = user.permission;
@@ -1102,6 +1487,34 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
             if (confirm(`Bạn có chắc muốn xóa banner "${fileName}"?`)) {
                 document.getElementById('delete_banner_file').value = fileName;
                 document.getElementById('deleteBannerForm').submit();
+            }
+        }
+
+        // Voucher functions
+        function editVoucher(code, voucher) {
+            document.getElementById('edit_voucher_code').value = code;
+            document.getElementById('edit_voucher_code_display').value = code;
+            document.getElementById('edit_voucher_name').value = voucher.name;
+            document.getElementById('edit_voucher_description').value = voucher.description || '';
+            document.getElementById('edit_voucher_min_amount').value = voucher.min_order_amount;
+            document.getElementById('edit_voucher_discount').value = voucher.discount_percent;
+            document.getElementById('edit_voucher_quantity').value = voucher.quantity;
+            document.getElementById('edit_voucher_active').checked = voucher.is_active;
+            document.getElementById('edit_voucher_expires').value = voucher.expires_at || '';
+
+            // Switch to vouchers tab and show modal
+            const vouchersTab = document.querySelector('[href="#vouchers"]');
+            const tab = new bootstrap.Tab(vouchersTab);
+            tab.show();
+
+            const modal = new bootstrap.Modal(document.getElementById('editVoucherModal'));
+            modal.show();
+        }
+
+        function deleteVoucher(code, name) {
+            if (confirm(`Bạn có chắc muốn xóa voucher "${name}" (${code})?`)) {
+                document.getElementById('delete_voucher_code').value = code;
+                document.getElementById('deleteVoucherForm').submit();
             }
         }
 

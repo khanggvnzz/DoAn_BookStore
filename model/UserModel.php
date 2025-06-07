@@ -18,7 +18,7 @@ class User
     public function __construct($data = [])
     {
         if (!empty($data)) {
-            $this->id = $data['id'] ?? '';
+            $this->user_id = $data['user_id'] ?? '';
             $this->name = $data['name'] ?? '';
             $this->phone = $data['phone'] ?? '';
             $this->address = $data['address'] ?? '';
@@ -35,7 +35,7 @@ class User
     public function toArray()
     {
         return [
-            'id' => $this->id,
+            'user_id' => $this->user_id,
             'name' => $this->name,
             'phone' => $this->phone,
             'address' => $this->address,
@@ -73,7 +73,7 @@ class User
      */
     public function fromArray($data)
     {
-        $this->id = $data['id'] ?? $this->id;
+        $this->user_id = $data['user_id'] ?? $this->user_id;
         $this->name = $data['name'] ?? $this->name;
         $this->phone = $data['phone'] ?? $this->phone;
         $this->address = $data['address'] ?? $this->address;

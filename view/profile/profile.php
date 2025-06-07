@@ -15,7 +15,7 @@ $success = '';
 
 // Lấy thông tin user hiện tại
 $userId = $_SESSION['user_id'];
-$user = $database->fetch("SELECT * FROM users WHERE id = :id", ['id' => $userId]);
+$user = $database->fetch("SELECT * FROM users WHERE user_id = :user_id", ['user_id' => $userId]);
 
 if (!$user) {
     $_SESSION['error'] = 'Không tìm thấy thông tin người dùng';
@@ -64,8 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $result = $database->update(
                     'users',
                     $updateData,
-                    'id = :id',
-                    ['id' => $userId]
+                    'user_id = :user_id',
+                    ['user_id' => $userId]
                 );
 
                 if ($result) {
@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['user_email'] = $email;
 
                     // Lấy lại thông tin user mới
-                    $user = $database->fetch("SELECT * FROM users WHERE id = :id", ['id' => $userId]);
+                    $user = $database->fetch("SELECT * FROM users WHERE user_id = :user_id", ['user_id' => $userId]);
 
                     $success = 'Cập nhật thông tin thành công!';
                 } else {
