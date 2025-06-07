@@ -76,12 +76,6 @@ function handleBooksController($action)
 // Admin controller functions
 function handleAdminController($action)
 {
-    // Check if user is admin (add authentication check here)
-    if (!isAdmin()) {
-        header('Location: /auth/login');
-        exit;
-    }
-
     switch ($action) {
         case 'index':
         case 'dashboard':
@@ -179,7 +173,7 @@ function showBooksSearch($query)
     if (!empty(trim($query))) {
         $searchTerm = '%' . trim($query) . '%';
         $books = $database->fetchAll(
-            "SELECT * FROM books WHERE title LIKE :search OR author LIKE :search  OR category LIKE :search ORDER BY created_at DESC",
+            "SELECT * FROM books WHERE title LIKE :search OR author LIKE :search OR publisher LIKE :search OR category LIKE :search ORDER BY created_at DESC",
             ['search' => $searchTerm]
         );
     }
@@ -198,7 +192,7 @@ function showAdminDashboard()
     ];
 
     // Include admin dashboard view
-    include BASE_PATH . '/view/admin/dashboard.php';
+    include BASE_PATH . '/view/admin/admin.php';
 }
 
 function showAdminBooks()
@@ -375,7 +369,7 @@ function handleLogin()
     }
 
     // Show login form
-    include BASE_PATH . '/view/login/login.php';
+    include BASE_PATH . '/view/view_list/view_list.php';
 }
 
 function handleRegister()
@@ -597,5 +591,5 @@ function isAdmin()
         isset($_SESSION['user_permission']) && $_SESSION['user_permission'] === 'admin';
 }
 
-// ...existing code...
+
 ?>

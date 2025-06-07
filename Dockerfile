@@ -1,44 +1,33 @@
 FROM php:8.2-apache
 
-# Cài đặt phụ thuộc cần thiết
+# Install system dependencies and PHP extensions
 RUN apt-get update && apt-get install -y \
     libpq-dev \
+    libzip-dev \
     unzip \
-    && docker-php-ext-install pdo_mysql \
+    curl \
+    && docker-php-ext-install \
+    pdo_mysql \
+    mysqli \
+    zip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Kích hoạt module rewrite cho Apache
-RUN a2enmod rewrite
+# Enable Apache modules
+RUN a2enmod rewrite ssl headers
 
-# Sao chép mã nguồn vào container
+RUN docker-php-ext-install pdo pdo_mysql
+
+# Set working directory
 WORKDIR /var/www/html
+
+# Copy application code
 COPY . .
 
-# Cài đặt Composer và phụ thuộc PHP (nếu có)
-RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
-    && if [ -f composer.json ]; then composer install --no-dev --optimize-autoloader; fi
+# Set proper permissions
+RUN chown -R www-data:www-data /var/www/html && \
+    chmod -R 755 /var/www/html && \
+    find /var/www/html -type f -exec chmod 644 {} \;
 
-# Cấp quyền cho thư mục
-RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 /var/www/html
-
-# Cấu hình Apache để sử dụng cổng từ biến môi trường
-ENV PORT=10000
-RUN echo "Listen \${PORT}" > /etc/apache2/ports.conf \
-    && echo "<VirtualHost *:\${PORT}>\n\
-    DocumentRoot /var/www/html\n\
-    <Directory /var/www/html>\n\
-    Options Indexes FollowSymLinks\n\
-    AllowOverride All\n\
-    Require all granted\n\
-    </Directory>\n\
-    ErrorLog \${APACHE_LOG_DIR}/error.log\n\
-    CustomLog \${APACHE_LOG_DIR}/access.log combined\n\
-    </VirtualHost>" > /etc/apache2/sites-available/000-default.conf
-
-# Mở cổng
-EXPOSE $PORT
-
-# Khởi động Apache
-CMD ["apache2-foreground"]
+# Expose port
+EXPOSE 8080

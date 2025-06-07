@@ -12,7 +12,7 @@ try {
     }
 
     $database = new Database();
-    $categories = $database->fetchAll("SELECT DISTINCT category FROM books WHERE category IS NOT NULL AND category != '' ORDER BY category");
+    $categories = $database->fetchAll("SELECT name FROM categories ORDER BY id");
 } catch (Exception $e) {
     error_log('Error loading categories: ' . $e->getMessage());
     $categories = [];
@@ -71,17 +71,18 @@ $userPermission = isset($_SESSION['user_permission']) ? $_SESSION['user_permissi
                                 </a>
                             </li>
 
-                            <?php if (!empty($categories) && count($categories) > 0): ?>
+                            <?php
+                            if (!empty($categories) && count($categories) > 0): ?>
                                 <li>
                                     <hr class="dropdown-divider">
                                 </li>
                                 <?php foreach ($categories as $category): ?>
-                                    <?php if (!empty($category['category'])): ?>
+                                    <?php if (!empty($category['name'])): ?>
                                         <li>
                                             <a class="dropdown-item"
-                                                href="/DoAn_BookStore/?category=<?php echo urlencode(trim($category['category'])); ?>">
+                                                href="/DoAn_BookStore/?category=<?php echo urlencode(trim($category['name'])); ?>">
                                                 <i class="fas fa-tag"></i>
-                                                <?php echo htmlspecialchars(trim($category['category'])); ?>
+                                                <?php echo htmlspecialchars(trim($category['name'])); ?>
                                             </a>
                                         </li>
                                     <?php endif; ?>

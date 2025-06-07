@@ -16,7 +16,9 @@ include BASE_PATH . '/view/navigation/navigation.php'; ?>
                     <div class="row">
                         <?php foreach ($books as $book): ?>
                             <div class="col-md-3 col-sm-6 mb-4">
-                                <div class="card book-card h-100 shadow-sm">
+                                <div class="card book-card h-100 shadow-sm"
+                                    onclick="window.location.href='/DoAn_BookStore/view/detail/detail.php?id=<?php echo $book['id']; ?>'"
+                                    style="cursor: pointer;">
                                     <div class="book-image-container">
                                         <img src="images/books/<?php echo htmlspecialchars($book['image']) ? htmlspecialchars($book['image']) : '/DoAn_BookStore/images/book-placeholder.jpg'; ?>"
                                             class="card-img-top book-image" alt="<?php echo htmlspecialchars($book['title']); ?>">
@@ -26,6 +28,13 @@ include BASE_PATH . '/view/navigation/navigation.php'; ?>
                                         <p class="book-author text-muted">
                                             <i class="fas fa-user"></i> <?php echo htmlspecialchars($book['author']); ?>
                                         </p>
+                                        <!-- Publisher -->
+                                        <?php if (!empty($book['publisher'])): ?>
+                                            <p class="text-muted mb-1 book-meta">
+                                                <i class="fas fa-building"></i>
+                                                <?php echo htmlspecialchars(substr($book['publisher'], 0, 20)) . (strlen($book['publisher']) > 20 ? '...' : ''); ?>
+                                            </p>
+                                        <?php endif; ?>
                                         <p class="book-description flex-grow-1">
                                             <?php echo strlen($book['description']) > 100 ? substr(htmlspecialchars($book['description']), 0, 100) . '...' : htmlspecialchars($book['description']); ?>
                                         </p>

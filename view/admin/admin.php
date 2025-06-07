@@ -13,6 +13,42 @@ $database = new Database();
 $message = '';
 $error = '';
 
+// Banner management functions
+function getBannerFiles() {
+    $adsDir = __DIR__ . '/../../images/ads/';
+    $bannerFiles = [];
+    
+    if (is_dir($adsDir)) {
+        $files = scandir($adsDir);
+        foreach ($files as $file) {
+            if ($file != '.' && $file != '..' && in_array(strtolower(pathinfo($file, PATHINFO_EXTENSION)), ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
+                $bannerFiles[] = $file;
+            }
+        }
+    }
+    
+    return $bannerFiles;
+}
+
+function getActiveBanners() {
+    $configFile = __DIR__ . '/../../config/active_banners.json';
+    if (file_exists($configFile)) {
+        $content = file_get_contents($configFile);
+        return json_decode($content, true) ?: [];
+    }
+    return [];
+}
+
+function saveActiveBanners($banners) {
+    $configDir = __DIR__ . '/../../config/';
+    if (!is_dir($configDir)) {
+        mkdir($configDir, 0755, true);
+    }
+    
+    $configFile = $configDir . 'active_banners.json';
+    return file_put_contents($configFile, json_encode($banners, JSON_PRETTY_PRINT));
+}
+
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -182,15 +218,86 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Lỗi khi xóa người dùng: " . $e->getMessage();
             }
             break;
+
+        case 'update_banners':
+            try {
+                $activeBanners = $_POST['active_banners'] ?? [];
+                if (saveActiveBanners($activeBanners)) {
+                    $message = "Cập nhật banner thành công!";
+                } else {
+                    $error = "Lỗi khi cập nhật banner";
+                }
+            } catch (Exception $e) {
+                $error = "Lỗi khi cập nhật banner: " . $e->getMessage();
+            }
+            break;
+
+        case 'upload_banner':
+            try {
+                if (isset($_FILES['banner_file']) && $_FILES['banner_file']['error'] === UPLOAD_ERR_OK) {
+                    $uploadDir = __DIR__ . '/../../images/ads/';
+                    if (!is_dir($uploadDir)) {
+                        mkdir($uploadDir, 0755, true);
+                    }
+
+                    $fileInfo = pathinfo($_FILES['banner_file']['name']);
+                    $extension = strtolower($fileInfo['extension']);
+                    $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+
+                    if (in_array($extension, $allowedExtensions)) {
+                        $fileName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $fileInfo['filename']) . '.' . $extension;
+                        $uploadPath = $uploadDir . $fileName;
+
+                        if (move_uploaded_file($_FILES['banner_file']['tmp_name'], $uploadPath)) {
+                            $message = "Upload banner thành công!";
+                        } else {
+                            $error = "Lỗi khi upload file";
+                        }
+                    } else {
+                        $error = "Chỉ cho phép upload file: jpg, jpeg, png, gif, webp";
+                    }
+                } else {
+                    $error = "Vui lòng chọn file để upload";
+                }
+            } catch (Exception $e) {
+                $error = "Lỗi khi upload banner: " . $e->getMessage();
+            }
+            break;
+
+        case 'delete_banner':
+            try {
+                $fileName = $_POST['banner_file'] ?? '';
+                $filePath = __DIR__ . '/../../images/ads/' . $fileName;
+                
+                if (file_exists($filePath) && unlink($filePath)) {
+                    // Remove from active banners if exists
+                    $activeBanners = getActiveBanners();
+                    $activeBanners = array_filter($activeBanners, function($banner) use ($fileName) {
+                        return $banner !== $fileName;
+                    });
+                    saveActiveBanners($activeBanners);
+                    
+                    $message = "Xóa banner thành công!";
+                } else {
+                    $error = "Không thể xóa file banner";
+                }
+            } catch (Exception $e) {
+                $error = "Lỗi khi xóa banner: " . $e->getMessage();
+            }
+            break;
     }
 }
 
-// Get data for display using Database methods
+// Get data for display
 $books = $database->fetchAll("SELECT * FROM books ORDER BY title");
 $users = $database->fetchAll("SELECT id, username, name, email, permission FROM users ORDER BY username");
 $categories = $database->fetchAll("SELECT DISTINCT category FROM books WHERE category IS NOT NULL AND category != '' ORDER BY category");
 
-// Get statistics using Database count method
+// Get banner data
+$allBanners = getBannerFiles();
+$activeBanners = getActiveBanners();
+
+// Get statistics
 $total_books = $database->count('books');
 $total_users = $database->count('users');
 $total_categories = count($categories);
@@ -199,7 +306,6 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
 
 <!DOCTYPE html>
 <html lang="vi">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -237,6 +343,11 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                         <li class="nav-item">
                             <a class="nav-link" href="#users" data-bs-toggle="tab">
                                 <i class="fas fa-users"></i> Quản lý người dùng
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#banners" data-bs-toggle="tab">
+                                <i class="fas fa-images"></i> Quản lý Banner
                             </a>
                         </li>
                         <li class="nav-item">
@@ -506,6 +617,119 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                             </div>
                         </div>
 
+                        <!-- Banner Management Tab -->
+                        <div class="tab-pane fade" id="banners">
+                            <div class="d-flex justify-content-between align-items-center mb-4">
+                                <h2><i class="fas fa-images"></i> Quản lý Banner Quảng Cáo</h2>
+                                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadBannerModal">
+                                    <i class="fas fa-upload"></i> Upload Banner
+                                </button>
+                            </div>
+
+                            <!-- Active Banners Section -->
+                            <div class="card mb-4">
+                                <div class="card-header">
+                                    <h5><i class="fas fa-star"></i> Banner Đang Hoạt Động</h5>
+                                </div>
+                                <div class="card-body">
+                                    <form method="POST">
+                                        <input type="hidden" name="action" value="update_banners">
+                                        <div class="row">
+                                            <?php if (empty($activeBanners)): ?>
+                                                <div class="col-12">
+                                                    <p class="text-muted">Chưa có banner nào được kích hoạt</p>
+                                                </div>
+                                            <?php else: ?>
+                                                <?php foreach ($activeBanners as $banner): ?>
+                                                    <?php if (file_exists(__DIR__ . '/../../images/ads/' . $banner)): ?>
+                                                        <div class="col-md-4 mb-3">
+                                                            <div class="card">
+                                                                <img src="/DoAn_BookStore/images/ads/<?php echo htmlspecialchars($banner); ?>" 
+                                                                     class="card-img-top" alt="Banner" style="height: 150px; object-fit: cover;">
+                                                                <div class="card-body p-2">
+                                                                    <small class="text-muted"><?php echo htmlspecialchars($banner); ?></small>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                <?php endforeach; ?>
+                                            <?php endif; ?>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+
+                            <!-- All Banners Section -->
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5><i class="fas fa-images"></i> Tất Cả Banner (<?php echo count($allBanners); ?>)</h5>
+                                </div>
+                                <div class="card-body">
+                                    <?php if (empty($allBanners)): ?>
+                                        <p class="text-muted">Chưa có banner nào. Hãy upload banner đầu tiên!</p>
+                                    <?php else: ?>
+                                        <form method="POST" id="bannersForm">
+                                            <input type="hidden" name="action" value="update_banners">
+                                            <div class="row">
+                                                <?php foreach ($allBanners as $banner): ?>
+                                                    <div class="col-md-4 mb-3">
+                                                        <div class="card banner-card">
+                                                            <div class="position-relative">
+                                                                <img src="/DoAn_BookStore/images/ads/<?php echo htmlspecialchars($banner); ?>" 
+                                                                     class="card-img-top" alt="Banner" style="height: 200px; object-fit: cover;">
+                                                                
+                                                                <!-- Delete button -->
+                                                                <button type="button" class="btn btn-danger btn-sm position-absolute top-0 end-0 m-2"
+                                                                        onclick="deleteBanner('<?php echo htmlspecialchars($banner); ?>')">
+                                                                    <i class="fas fa-trash"></i>
+                                                                </button>
+                                                                
+                                                                <!-- Active indicator -->
+                                                                <?php if (in_array($banner, $activeBanners)): ?>
+                                                                    <span class="badge bg-success position-absolute top-0 start-0 m-2">
+                                                                        <i class="fas fa-star"></i> Đang hoạt động
+                                                                    </span>
+                                                                <?php endif; ?>
+                                                            </div>
+                                                            
+                                                            <div class="card-body">
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox" 
+                                                                        name="active_banners[]" 
+                                                                        value="<?php echo htmlspecialchars($banner); ?>"
+                                                                        id="banner_<?php echo md5($banner); ?>"
+                                                                        <?php echo in_array($banner, $activeBanners) ? 'checked' : ''; ?>>
+                                                                    <label class="form-check-label" for="banner_<?php echo md5($banner); ?>">
+                                                                        <strong>Kích hoạt banner</strong>
+                                                                    </label>
+                                                                </div>
+                                                                <small class="text-muted d-block mt-2">
+                                                                    <?php echo htmlspecialchars($banner); ?>
+                                                                </small>
+                                                                <small class="text-muted">
+                                                                    Kích thước: 
+                                                                    <?php
+                                                                    $imageInfo = getimagesize(__DIR__ . '/../../images/ads/' . $banner);
+                                                                    echo $imageInfo[0] . 'x' . $imageInfo[1] . 'px';
+                                                                    ?>
+                                                                </small>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                <?php endforeach; ?>
+                                            </div>
+                                            
+                                            <div class="mt-3">
+                                                <button type="submit" class="btn btn-primary">
+                                                    <i class="fas fa-save"></i> Cập Nhật Banner Hoạt Động
+                                                </button>
+                                            </div>
+                                        </form>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Inventory Tab -->
                         <div class="tab-pane fade" id="inventory">
                             <h2 class="mb-4"><i class="fas fa-warehouse"></i> Quản lý kho hàng</h2>
@@ -767,15 +991,49 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
         </div>
     </div>
 
-    <!-- Delete Forms -->
-    <form id="deleteBookForm" method="POST" style="display: none;">
-        <input type="hidden" name="action" value="delete_book">
-        <input type="hidden" name="book_id" id="delete_book_id">
-    </form>
+    <!-- Upload Banner Modal -->
+    <div class="modal fade" id="uploadBannerModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Upload Banner Mới</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="modal-body">
+                        <input type="hidden" name="action" value="upload_banner">
+                        <div class="mb-3">
+                            <label class="form-label">Chọn file banner</label>
+                            <input type="file" class="form-control" name="banner_file" accept="image/*" required>
+                            <div class="form-text">
+                                Chỉ chấp nhận file: JPG, JPEG, PNG, GIF, WEBP<br>
+                                Khuyến nghị kích thước: 1200x400px hoặc tỷ lệ 3:1
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="activate_immediately" id="activateImmediately">
+                                <label class="form-check-label" for="activateImmediately">
+                                    Kích hoạt ngay sau khi upload
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-upload"></i> Upload
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
-    <form id="deleteUserForm" method="POST" style="display: none;">
-        <input type="hidden" name="action" value="delete_user">
-        <input type="hidden" name="user_id" id="delete_user_id">
+    <!-- Delete Banner Form -->
+    <form id="deleteBannerForm" method="POST" style="display: none;">
+        <input type="hidden" name="action" value="delete_banner">
+        <input type="hidden" name="banner_file" id="delete_banner_file">
     </form>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -839,6 +1097,14 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
             }
         }
 
+        // Banner management functions
+        function deleteBanner(fileName) {
+            if (confirm(`Bạn có chắc muốn xóa banner "${fileName}"?`)) {
+                document.getElementById('delete_banner_file').value = fileName;
+                document.getElementById('deleteBannerForm').submit();
+            }
+        }
+
         // Auto-hide alerts
         setTimeout(function () {
             document.querySelectorAll('.alert').forEach(function (alert) {
@@ -848,5 +1114,4 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
         }, 3000);
     </script>
 </body>
-
 </html>

@@ -10,7 +10,6 @@ $request_uri = ltrim(str_replace($base_path, '', $request_uri), '/');
 // Ưu tiên lấy controller và action từ $_GET nếu có
 $controller = isset($_GET['controller']) && !empty($_GET['controller']) ? $_GET['controller'] : null;
 $action = isset($_GET['action']) && !empty($_GET['action']) ? $_GET['action'] : null;
-var_dump($controller, $action); // Hiển thị giá trị của controller và action để kiểm tra
 
 // Nếu không có trong $_GET, phân tích từ URI
 if (!$controller || !$action) {

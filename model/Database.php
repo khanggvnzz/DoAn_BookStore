@@ -50,11 +50,11 @@ class Database
             }
         } else {
             // Fallback to default values if .env file doesn't exist
-            $this->host = 'localhost';
-            $this->port = '3306';
-            $this->db_name = 'BookStore';
-            $this->username = 'root';
-            $this->password = '';
+            $this->host = getenv('DB_HOST') ?: '127.0.0.1';
+            $this->port = getenv('DB_PORT') ?: '3306';
+            $this->dbname = getenv('DB_DATABASE') ?: '';
+            $this->username = getenv('DB_USERNAME') ?: 'root';
+            $this->password = getenv('DB_PASSWORD') ?: '';
         }
     }
 

@@ -16,7 +16,7 @@ if (!in_array($perPage, $allowedPerPage)) {
     $perPage = 18; // Default fallback
 }
 
-// Get books with pagination (15 books per page)
+// Get books with pagination
 try {
     $result = $database->getBooksWithPagination($page, $perPage, $search, $category);
     $books = $result['books'];
@@ -46,12 +46,10 @@ $baseUrl = '/DoAn_BookStore';
     <?php include 'view/navigation/navigation.php'; ?>
     <?php include 'view/banner/banner.php'; ?>
     <div class="container-fluid py-3">
-        <!-- Reduced padding -->
+        <!-- Header -->
         <div class="row mb-3">
-            <!-- Reduced margin -->
             <div class="col-12">
                 <h1 class="text-center mb-3">
-                    <!-- Reduced margin -->
                     <i class="fas fa-book"></i> Danh Sách
                 </h1>
 
@@ -63,67 +61,77 @@ $baseUrl = '/DoAn_BookStore';
             </div>
         </div>
 
+        <!-- Books Grid -->
         <div class="row">
             <?php if (!empty($books)): ?>
                 <?php foreach ($books as $book): ?>
                     <div class="col-xl-2 col-lg-3 col-md-4 col-sm-6 mb-3">
-                        <!-- Changed to col-xl-2 for smaller cards -->
-                        <div class="card book-card h-100">
-                            <div class="card-img-top position-relative">
+                        <div class="card book-card h-100"
+                            onclick="window.location.href='/DoAn_BookStore/view/detail/detail.php?id=<?php echo $book['id']; ?>'"
+                            style="cursor: pointer;">
+
+                            <!-- Fixed size image container -->
+                            <div class="book-image-container position-relative">
                                 <?php if (!empty($book['image'])): ?>
-                                    <img src="images/books/<?php echo htmlspecialchars($book['image']); ?>"
-                                        class="img-fluid book-image" alt="<?php echo htmlspecialchars($book['title']); ?>">
+                                    <img src="images/books/<?php echo htmlspecialchars($book['image']); ?>" class="book-image"
+                                        alt="<?php echo htmlspecialchars($book['title']); ?>" loading="lazy"
+                                        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                    <!-- Fallback placeholder -->
+                                    <div class="book-image-placeholder" style="display: none;">
+                                        <i class="fas fa-book fa-3x text-muted"></i>
+                                    </div>
                                 <?php else: ?>
-                                    <div class="bg-light d-flex align-items-center justify-content-center book-image">
-                                        <i class="fas fa-book fa-2x text-muted"></i>
-                                        <!-- Smaller icon -->
+                                    <div class="book-image-placeholder">
+                                        <i class="fas fa-book fa-3x text-muted"></i>
                                     </div>
                                 <?php endif; ?>
 
+                                <!-- Category badge -->
                                 <?php if (!empty($book['category'])): ?>
-                                    <span class="position-absolute top-0 end-0 m-1 book-category">
-                                        <!-- Smaller margin -->
+                                    <span class="position-absolute top-0 end-0 m-2 book-category">
                                         <?php echo htmlspecialchars($book['category']); ?>
                                     </span>
                                 <?php endif; ?>
                             </div>
 
+                            <!-- Card content -->
                             <div class="card-body d-flex flex-column">
-                                <h6 class="card-title book-title mb-2">
-                                    <!-- Changed to h6 -->
+                                <!-- Title -->
+                                <h6 class="book-title">
                                     <?php echo htmlspecialchars($book['title']); ?>
                                 </h6>
 
+                                <!-- Author -->
                                 <p class="book-author mb-1">
-                                    <!-- Reduced margin -->
                                     <i class="fas fa-user"></i>
                                     <?php echo htmlspecialchars($book['author']); ?>
                                 </p>
 
+                                <!-- Publisher -->
                                 <?php if (!empty($book['publisher'])): ?>
                                     <p class="text-muted mb-1 book-meta">
-                                        <!-- Added book-meta class -->
                                         <i class="fas fa-building"></i>
                                         <?php echo htmlspecialchars(substr($book['publisher'], 0, 20)) . (strlen($book['publisher']) > 20 ? '...' : ''); ?>
                                     </p>
                                 <?php endif; ?>
 
+                                <!-- Date -->
                                 <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <!-- Reduced margin -->
                                     <small class="text-muted book-meta">
                                         <i class="fas fa-calendar-alt"></i>
                                         <?php echo date('d/m/Y', strtotime($book['created_at'])); ?>
                                     </small>
                                 </div>
 
+                                <!-- Description -->
                                 <?php if (!empty($book['description'])): ?>
                                     <p class="book-description mb-2">
-                                        <?php echo htmlspecialchars(substr($book['description'], 0, 80)) . '...'; ?>
+                                        <?php echo htmlspecialchars(substr($book['description'], 0, 100)) . '...'; ?>
                                     </p>
                                 <?php endif; ?>
 
+                                <!-- Price and button -->
                                 <div class="mt-auto">
-                                    <!-- Beautiful Price Container -->
                                     <div class="price-container">
                                         <p class="book-price">
                                             <i class="fas fa-tags price-icon"></i>
@@ -135,13 +143,10 @@ $baseUrl = '/DoAn_BookStore';
                                         </p>
                                     </div>
 
-                                    <div class="d-grid gap-1 btn-group-custom">
-                                        <!-- Reduced gap -->
-                                        <button class="btn btn-primary-custom btn-sm btn-custom">
-                                            <i class="fas fa-shopping-cart"></i> Thêm
-                                        </button>
-                                        <button class="btn btn-outline-custom btn-sm btn-custom">
-                                            <i class="fas fa-eye"></i> Chi tiết
+                                    <div class="d-grid">
+                                        <button class="btn btn-primary-custom btn-sm"
+                                            onclick="event.stopPropagation(); addToCart(<?php echo $book['id']; ?>)">
+                                            <i class="fas fa-shopping-cart"></i> Thêm vào giỏ
                                         </button>
                                     </div>
                                 </div>
@@ -160,9 +165,9 @@ $baseUrl = '/DoAn_BookStore';
             <?php endif; ?>
         </div>
 
+        <!-- Pagination -->
         <?php if (!empty($pagination) && $pagination['total_pages'] > 1): ?>
-            <div class="row mt-3">
-                <!-- Reduced margin -->
+            <div class="row mt-4">
                 <div class="col-12">
                     <?php echo $database->generatePaginationHTML($pagination, $baseUrl); ?>
                 </div>
@@ -172,6 +177,36 @@ $baseUrl = '/DoAn_BookStore';
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        function addToCart(bookId) {
+            event.stopPropagation();
+            console.log('Adding book ID: ' + bookId + ' to cart');
+            alert('Đã thêm sách vào giỏ hàng! (ID: ' + bookId + ')');
+        }
+
+        // Enhanced image loading
+        document.addEventListener('DOMContentLoaded', function () {
+            const images = document.querySelectorAll('.book-image');
+            images.forEach(img => {
+                // Show loading state
+
+                img.addEventListener('load', function () {
+                    this.style.opacity = '1';
+                });
+
+                img.addEventListener('error', function () {
+                    console.log('Image failed to load:', this.src);
+                    this.style.display = 'none';
+                    const placeholder = this.nextElementSibling;
+                    if (placeholder) {
+                        placeholder.style.display = 'flex';
+                    }
+                });
+            });
+        });
+    </script>
+
     <?php include 'view/footer/footer.php'; ?>
 </body>
 
