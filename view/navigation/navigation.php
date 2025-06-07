@@ -113,7 +113,7 @@ $userPermission = isset($_SESSION['user_permission']) ? $_SESSION['user_permissi
                 </ul>
 
                 <!-- Search Form -->
-                <form class="d-flex search-form me-3" method="GET"
+                <form class="d-flex search-form me-3" action="/DoAn_BookStore/index.php" method="GET"
                     action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>">
                     <div class="input-group">
                         <input type="hidden" name="controller" value="books">

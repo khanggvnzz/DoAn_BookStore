@@ -46,12 +46,6 @@ include BASE_PATH . '/view/navigation/navigation.php'; ?>
                                                     <span class="currency">đ</span>
                                                 </p>
                                             </div>
-                                            <div class="d-grid">
-                                                <a href="/DoAn_BookStore/?controller=books&action=view&id=<?php echo $book['id']; ?>"
-                                                    class="btn btn-primary-custom btn-custom">
-                                                    <i class="fas fa-eye"></i> Xem chi tiết
-                                                </a>
-                                            </div>
                                         </div>
                                     </div>
                                 </div>
