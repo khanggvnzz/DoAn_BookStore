@@ -43,69 +43,100 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             throw new Exception('Vui lòng điền đầy đủ thông tin bắt buộc');
         }
 
-        // Create order
+        // Validate phone number format
+        if (!preg_match('/^[0-9]{10,11}$/', $customerPhone)) {
+            throw new Exception('Số điện thoại không hợp lệ');
+        }
+
+        // Get cart items for order processing
+        $cartItems = $database->getCartItems($userId);
+        if (empty($cartItems)) {
+            throw new Exception('Giỏ hàng trống');
+        }
+
+        // Validate cart items and stock
+        $cartValidation = $database->validateCartItems($userId);
+        if (!$cartValidation['valid']) {
+            $errorMessages = [];
+            foreach ($cartValidation['errors'] as $error) {
+                $errorMessages[] = $error['message'];
+            }
+            throw new Exception('Có lỗi với giỏ hàng: ' . implode(', ', $errorMessages));
+        }
+
+        // Create product list string and calculate total cost
+        $productList = [];
+        $totalCost = 0;
+
+        foreach ($cartItems as $item) {
+            $itemTotal = $item['price'] * $item['quantity'];
+            $totalCost += $itemTotal;
+            $productList[] = $item['title'] . ' (x' . $item['quantity'] . ')';
+        }
+
+        $productString = implode(', ', $productList);
+
+        // Apply voucher discount if exists
+        $voucherId = null;
+        $finalCost = $totalCost;
+
+        if (isset($_SESSION['applied_voucher']) && $_SESSION['applied_voucher']) {
+            $voucher = $_SESSION['applied_voucher'];
+            $voucherId = $voucher['id'];
+
+            // Use the already calculated final cost from checkout data
+            $finalCost = $checkoutData['final_total'];
+        }
+
+        // Prepare order data for insertion
         $orderData = [
             'user_id' => $userId,
-            'customer_name' => $customerName,
-            'customer_phone' => $customerPhone,
-            'customer_email' => $customerEmail,
-            'shipping_address' => $shippingAddress,
-            'payment_method' => $paymentMethod,
-            'notes' => $notes,
-            'total_amount' => $checkoutData['total_amount'],
-            'discount_amount' => $checkoutData['discount_amount'],
-            'final_amount' => $checkoutData['final_total'],
-            'voucher_code' => $checkoutData['applied_voucher']['code'] ?? null,
-            'status' => $paymentMethod === 'bank_transfer' ? 'awaiting_payment' : 'pending',
-            'payment_status' => $paymentMethod === 'bank_transfer' ? 'pending' : 'cod',
-            'created_at' => date('Y-m-d H:i:s')
+            'product' => $productString,
+            'cost' => $finalCost,
+            'created_at' => date('Y-m-d H:i:s'),
+            'pay_method' => $paymentMethod,
+            'note' => $notes,
+            'voucher_id' => $voucherId
         ];
 
+        // Insert order into database
         $orderId = $database->createOrder($orderData);
+        var_dump($orderId);
 
         if (!$orderId) {
             throw new Exception('Không thể tạo đơn hàng');
         }
 
-        // Add order items
-        foreach ($checkoutData['items'] as $item) {
-            $orderItemData = [
-                'order_id' => $orderId,
-                'book_id' => $item['book_id'],
-                'quantity' => $item['quantity'],
-                'price' => $item['price'],
-                'total' => $item['price'] * $item['quantity']
-            ];
-
-            $database->insert('order_items', $orderItemData);
-
-            // Update book stock
-            $database->query(
-                "UPDATE books SET stock = stock - :quantity WHERE id = :book_id",
-                ['quantity' => $item['quantity'], 'book_id' => $item['book_id']]
-            );
+        // Update book stock
+        foreach ($cartItems as $item) {
+            $database->updateBookStock($item['book_id'], -$item['quantity']);
         }
 
         // Update voucher usage if applied
-        if ($checkoutData['applied_voucher']) {
-            $database->updateVoucherUsage($checkoutData['applied_voucher']['code']);
+        if ($voucherId) {
+            $database->updateVoucherUsage($voucherId);
         }
 
-        // Clear cart and checkout data
-        $database->clearCart($userId);
+        // Clear user's cart
+        $database->clearUserCart($userId);
+
+        // Clear checkout data from session
         unset($_SESSION['checkout_data']);
         unset($_SESSION['applied_voucher']);
 
         $database->commit();
 
         // Redirect to order success page
-        header("Location: /DoAn_BookStore/view/order/order_success.php?order_id=" . $orderId);
+        header("Location: /DoAn_BookStore/view/payment/order_success.php?order_id=" . $orderId);
         exit();
 
     } catch (Exception $e) {
         $database->rollback();
         $message = $e->getMessage();
         $messageType = 'danger';
+
+        // Log error for debugging
+        error_log('Order creation error: ' . $e->getMessage());
     }
 }
 ?>
@@ -444,9 +475,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
-                    <button type="button" class="btn btn-primary" onclick="confirmBankTransfer()">
-                        <i class="fas fa-check"></i> Đã chuyển khoản
-                    </button>
                 </div>
             </div>
         </div>
@@ -469,16 +497,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             // Check the radio button
             document.getElementById(method).checked = true;
 
-            // Handle bank transfer selection
+            // Handle bank transfer or momo selection
             if (method === 'bank_transfer') {
-                showQRModal();
+                showQRModal('bank');
+            } else if (method === 'momo') {
+                showQRModal('momo');
             }
         }
 
-        function showQRModal() {
+        function showQRModal(type) {
             qrModal = new bootstrap.Modal(document.getElementById('qrCodeModal'));
             qrModal.show();
-            generateQRCode(currentAmount);
+            loadStaticQRCode(type);
         }
 
         // Set default payment method
@@ -486,80 +516,104 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             selectPaymentMethod('cod');
         });
 
-        async function generateQRCode(amount, orderId = 'TEMP') {
+        function loadStaticQRCode(type) {
             // Show loading
             document.getElementById('qr-loading').classList.remove('d-none');
             document.getElementById('qr-content').classList.add('d-none');
             document.getElementById('qr-error').classList.add('d-none');
 
-            try {
-                const response = await fetch('/DoAn_BookStore/view/payment/make_bank_qr.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        amount: amount,
-                        order_id: orderId,
-                        content: `BookStore - Don hang #${orderId} - ${amount.toLocaleString()} VND`
-                    })
-                });
+            // Simulate loading time
+            setTimeout(() => {
+                try {
+                    let qrImageSrc, bankInfo, modalTitle;
 
-                const result = await response.json();
+                    if (type === 'bank') {
+                        qrImageSrc = '/DoAn_BookStore/images/qr_pay/bank_qr.jpg';
+                        modalTitle = '<i class="fas fa-qrcode"></i> Quét mã QR để chuyển khoản ngân hàng';
+                        bankInfo = `
+                            <h6 class="text-primary mb-2">
+                                <i class="fas fa-university"></i> Thông tin chuyển khoản
+                            </h6>
+                            <p><strong>Ngân hàng:</strong> Vietcombank</p>
+                            <p><strong>Số tài khoản:</strong> <code>1030382538</code></p>
+                            <p><strong>Chủ tài khoản:</strong> VU BA NHAT KHANG</p>
+                            <p><strong>Số tiền:</strong> <span class="text-danger fw-bold">${currentAmount.toLocaleString()} VNĐ</span></p>
+                            <p><strong>Nội dung:</strong> <code>BookStore - Don hang - ${currentAmount.toLocaleString()} VND</code></p>
+                        `;
+                    } else if (type === 'momo') {
+                        qrImageSrc = '/DoAn_BookStore/images/qr_pay/momo_qr.jpg';
+                        modalTitle = '<i class="fas fa-mobile-alt"></i> Quét mã QR để thanh toán MoMo';
+                        bankInfo = `
+                            <h6 class="text-danger mb-2">
+                                <i class="fas fa-mobile-alt"></i> Thông tin thanh toán MoMo
+                            </h6>
+                            <p><strong>Ví MoMo:</strong> BookStore Official</p>
+                            <p><strong>Số tiền:</strong> <span class="text-danger fw-bold">${currentAmount.toLocaleString()} VNĐ</span></p>
+                            <p><strong>Nội dung:</strong> <code>BookStore - Don hang - ${currentAmount.toLocaleString()} VND</code></p>
+                            <div class="alert alert-warning mt-2">
+                                <small>
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    Vui lòng nhập đúng nội dung chuyển khoản để đơn hàng được xử lý tự động.
+                                </small>
+                            </div>
+                        `;
+                    }
 
-                // Hide loading
-                document.getElementById('qr-loading').classList.add('d-none');
+                    // Update modal title
+                    document.getElementById('qrCodeModalLabel').innerHTML = modalTitle;
 
-                if (result.success) {
-                    // Sử dụng file ảnh nếu có, không thì dùng base64
-                    const qrImageSrc = result.qr_image_path || result.qr_code;
+                    // Hide loading
+                    document.getElementById('qr-loading').classList.add('d-none');
 
                     // Show QR code
                     document.getElementById('qr-code-img').src = qrImageSrc;
-                    document.getElementById('bank-info').innerHTML = `
-                        <h6 class="text-primary mb-2">
-                            <i class="fas fa-university"></i> Thông tin chuyển khoản
-                        </h6>
-                        <p><strong>Ngân hàng:</strong> ${result.bank_info.bank_name}</p>
-                        <p><strong>Số tài khoản:</strong> <code>${result.bank_info.account_number}</code></p>
-                        <p><strong>Chủ tài khoản:</strong> ${result.bank_info.account_name}</p>
-                        <p><strong>Số tiền:</strong> <span class="text-danger fw-bold">${result.bank_info.amount.toLocaleString()} VNĐ</span></p>
-                        <p><strong>Nội dung:</strong> <code>${result.bank_info.content}</code></p>
-                        ${result.file_info ? `<small class="text-muted">File ảnh: ${result.file_info.file_size} bytes</small>` : ''}
-                        ${result.file_error ? `<small class="text-warning">Lỗi file: ${result.file_error}</small>` : ''}
-                    `;
-                    document.getElementById('qr-content').classList.remove('d-none');
-                } else {
+                    document.getElementById('qr-code-img').onload = function () {
+                        // Image loaded successfully
+                        document.getElementById('bank-info').innerHTML = bankInfo;
+                        document.getElementById('qr-content').classList.remove('d-none');
+                    };
+
+                    document.getElementById('qr-code-img').onerror = function () {
+                        // Image failed to load
+                        document.getElementById('qr-error-message').textContent = `Không thể tải ảnh QR ${type === 'bank' ? 'ngân hàng' : 'MoMo'}. Vui lòng thử lại.`;
+                        document.getElementById('qr-error').classList.remove('d-none');
+                    };
+
+                } catch (error) {
+                    console.error('Error loading QR code:', error);
+
+                    // Hide loading
+                    document.getElementById('qr-loading').classList.add('d-none');
+
                     // Show error
-                    document.getElementById('qr-error-message').textContent = result.error;
+                    document.getElementById('qr-error-message').textContent = 'Lỗi: ' + error.message;
                     document.getElementById('qr-error').classList.remove('d-none');
                 }
-            } catch (error) {
-                console.error('Network error:', error);
-
-                // Hide loading
-                document.getElementById('qr-loading').classList.add('d-none');
-
-                // Show error
-                document.getElementById('qr-error-message').textContent = 'Lỗi kết nối: ' + error.message;
-                document.getElementById('qr-error').classList.remove('d-none');
-            }
+            }, 500); // 500ms delay để simulate loading
         }
 
         function retryGenerateQR() {
-            generateQRCode(currentAmount);
+            const selectedPayment = document.querySelector('input[name="payment_method"]:checked').value;
+            if (selectedPayment === 'bank_transfer') {
+                loadStaticQRCode('bank');
+            } else if (selectedPayment === 'momo') {
+                loadStaticQRCode('momo');
+            }
         }
 
         function confirmBankTransfer() {
             // Close modal
             qrModal.hide();
 
-            // Show success message
+            // Show processing message
             const alertHtml = `
                 <div class="alert alert-info alert-dismissible fade show" role="alert">
-                    <i class="fas fa-info-circle"></i>
-                    Bạn đã chọn chuyển khoản ngân hàng. Vui lòng hoàn tất chuyển khoản sau khi đặt hàng.
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    <div class="d-flex align-items-center">
+                        <div class="spinner-border spinner-border-sm me-2" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <span>Đang xử lý đơn hàng...</span>
+                    </div>
                 </div>
             `;
 
@@ -567,44 +621,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             const form = document.querySelector('form');
             form.insertAdjacentHTML('beforebegin', alertHtml);
 
-            // Auto remove alert after 5 seconds
+            // Validate and submit immediately
             setTimeout(() => {
-                const alert = document.querySelector('.alert-info');
-                if (alert) {
-                    const bsAlert = new bootstrap.Alert(alert);
-                    bsAlert.close();
+                // Validate required fields
+                const customerName = document.getElementById('customer_name').value.trim();
+                const customerPhone = document.getElementById('customer_phone').value.trim();
+                const shippingAddress = document.getElementById('shipping_address').value.trim();
+
+                if (!customerName || !customerPhone || !shippingAddress) {
+                    // Remove processing alert
+                    document.querySelector('.alert-info').remove();
+
+                    // Show error
+                    const errorHtml = `
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            Vui lòng điền đầy đủ thông tin bắt buộc (Họ tên, Số điện thoại, Địa chỉ).
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    `;
+                    form.insertAdjacentHTML('beforebegin', errorHtml);
+                    return;
                 }
-            }, 5000);
+
+                // Mark form as confirmed and submit
+                form.setAttribute('data-confirmed', 'true');
+                form.submit();
+            }, 500);
         }
 
-        // Handle modal close - revert to COD if user didn't confirm
-        document.getElementById('qrCodeModal').addEventListener('hidden.bs.modal', function (event) {
-            // Check if bank transfer is still selected but user closed modal
-            const bankTransferRadio = document.getElementById('bank_transfer');
-            if (bankTransferRadio.checked) {
-                // Ask user if they want to keep bank transfer or switch back to COD
-                setTimeout(() => {
-                    if (confirm('Bạn có muốn tiếp tục với phương thức chuyển khoản ngân hàng không?')) {
-                        // Keep bank transfer selected
-                        selectPaymentMethod('bank_transfer');
-                    } else {
-                        // Switch back to COD
-                        selectPaymentMethod('cod');
-                    }
-                }, 100);
-            }
-        });
-
-        // Update the form submission to handle bank transfer
+        // Update the form submission handler
         document.querySelector('form').addEventListener('submit', function (e) {
             const paymentMethod = document.querySelector('input[name="payment_method"]:checked').value;
 
-            if (paymentMethod === 'bank_transfer') {
-                // Show confirmation for bank transfer
-                if (!confirm('Bạn đã chuyển khoản theo thông tin được cung cấp chưa?\n\nNhấn OK nếu đã chuyển khoản hoặc sẽ chuyển sau khi đặt hàng.\nNhấn Cancel để quay lại.')) {
+            // If form is already confirmed (from confirmBankTransfer), allow submission
+            if (this.hasAttribute('data-confirmed')) {
+                return true;
+            }
+
+            // Handle different payment methods
+            if (paymentMethod === 'cod') {
+                if (!confirm('Xác nhận đặt hàng với phương thức thanh toán khi nhận hàng?')) {
                     e.preventDefault();
                     return false;
                 }
+            } else if (paymentMethod === 'bank_transfer' || paymentMethod === 'momo') {
+                // Prevent direct submission for electronic payments
+                e.preventDefault();
+
+                const paymentName = paymentMethod === 'bank_transfer' ? 'chuyển khoản ngân hàng' : 'MoMo';
+
+                if (confirm(`Bạn chưa hoàn tất thanh toán ${paymentName}. Bạn có muốn tiếp tục đặt hàng không?\n\nĐơn hàng sẽ được tạo và chờ xác nhận thanh toán.`)) {
+                    // Mark as confirmed and submit
+                    this.setAttribute('data-confirmed', 'true');
+                    this.submit();
+                }
+
+                return false;
             }
         });
     </script>

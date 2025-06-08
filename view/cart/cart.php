@@ -15,53 +15,15 @@ $userId = $_SESSION['user_id'];
 $message = '';
 $messageType = '';
 
-// Voucher functions
-function getVouchers()
+// Voucher functions - Updated to use database
+function getVouchers($database, $orderAmount = 0)
 {
-    $configFile = __DIR__ . '/../../config/vouchers.json';
-    if (file_exists($configFile)) {
-        $content = file_get_contents($configFile);
-        return json_decode($content, true) ?: [];
-    }
-    return [];
+    return $database->getAllActiveVouchers($orderAmount);
 }
 
-function validateVoucher($voucherCode, $orderAmount)
+function validateVoucher($database, $voucherCode, $orderAmount, $userId = null)
 {
-    $vouchers = getVouchers();
-
-    if (!isset($vouchers[$voucherCode])) {
-        return ['valid' => false, 'message' => 'Mã voucher không tồn tại'];
-    }
-
-    $voucher = $vouchers[$voucherCode];
-
-    // Check if voucher is active
-    if (!$voucher['is_active']) {
-        return ['valid' => false, 'message' => 'Voucher đã bị vô hiệu hóa'];
-    }
-
-    // Check if voucher is expired
-    if ($voucher['expires_at'] && new DateTime($voucher['expires_at']) < new DateTime()) {
-        return ['valid' => false, 'message' => 'Voucher đã hết hạn'];
-    }
-
-    // Check if voucher quantity is available
-    if ($voucher['used_count'] >= $voucher['quantity']) {
-        return ['valid' => false, 'message' => 'Voucher đã hết lượt sử dụng'];
-    }
-
-    // Check minimum order amount
-    if ($orderAmount < $voucher['min_order_amount']) {
-        $minAmount = number_format($voucher['min_order_amount'] * 1000, 0, ',', '.');
-        return ['valid' => false, 'message' => "Đơn hàng tối thiểu {$minAmount} VNĐ để sử dụng voucher này"];
-    }
-
-    return [
-        'valid' => true,
-        'voucher' => $voucher,
-        'discount_amount' => ($orderAmount * $voucher['discount_percent']) / 100
-    ];
+    return $database->canApplyVoucher($voucherCode, $orderAmount, $userId);
 }
 
 // Initialize voucher session
@@ -86,14 +48,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $cartSummary = $database->getCartSummary($userId);
             $orderAmount = $cartSummary['total_amount'];
 
-            $validation = validateVoucher($voucherCode, $orderAmount);
+            $validation = validateVoucher($database, $voucherCode, $orderAmount, $userId);
 
             if ($validation['valid']) {
                 $_SESSION['applied_voucher'] = [
                     'code' => $voucherCode,
                     'name' => $validation['voucher']['name'],
                     'discount_percent' => $validation['voucher']['discount_percent'],
-                    'discount_amount' => $validation['discount_amount']
+                    'discount_amount' => $validation['discount_amount'],
+                    'voucher_id' => $validation['voucher']['voucher_id']
                 ];
 
                 $finalTotal = $orderAmount - $validation['discount_amount'];
@@ -135,10 +98,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $finalTotal = $cartSummary['total_amount'];
 
                 if ($_SESSION['applied_voucher']) {
-                    $validation = validateVoucher($_SESSION['applied_voucher']['code'], $cartSummary['total_amount']);
+                    $validation = validateVoucher($database, $_SESSION['applied_voucher']['code'], $cartSummary['total_amount'], $userId);
                     if ($validation['valid']) {
                         $discountAmount = $validation['discount_amount'];
                         $finalTotal = $cartSummary['total_amount'] - $discountAmount;
+
+                        // Update session voucher data
+                        $_SESSION['applied_voucher']['discount_amount'] = $discountAmount;
                     } else {
                         $_SESSION['applied_voucher'] = null; // Remove invalid voucher
                     }
@@ -170,10 +136,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $finalTotal = $cartSummary['total_amount'];
 
                 if ($_SESSION['applied_voucher']) {
-                    $validation = validateVoucher($_SESSION['applied_voucher']['code'], $cartSummary['total_amount']);
+                    $validation = validateVoucher($database, $_SESSION['applied_voucher']['code'], $cartSummary['total_amount'], $userId);
                     if ($validation['valid']) {
                         $discountAmount = $validation['discount_amount'];
                         $finalTotal = $cartSummary['total_amount'] - $discountAmount;
+
+                        // Update session voucher data
+                        $_SESSION['applied_voucher']['discount_amount'] = $discountAmount;
                     } else {
                         $_SESSION['applied_voucher'] = null; // Remove invalid voucher
                     }
@@ -234,7 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             // Calculate final total with voucher if applied
             if ($_SESSION['applied_voucher']) {
-                $validation = validateVoucher($_SESSION['applied_voucher']['code'], $cartSummary['total_amount']);
+                $validation = validateVoucher($database, $_SESSION['applied_voucher']['code'], $cartSummary['total_amount'], $userId);
                 if ($validation['valid']) {
                     $_SESSION['checkout_data']['discount_amount'] = $validation['discount_amount'];
                     $_SESSION['checkout_data']['final_total'] = $cartSummary['total_amount'] - $validation['discount_amount'];
@@ -261,7 +230,7 @@ $discountAmount = 0;
 $finalTotal = $totalAmount;
 
 if ($appliedVoucher) {
-    $validation = validateVoucher($appliedVoucher['code'], $totalAmount);
+    $validation = validateVoucher($database, $appliedVoucher['code'], $totalAmount, $userId);
     if ($validation['valid']) {
         $discountAmount = $validation['discount_amount'];
         $finalTotal = $totalAmount - $discountAmount;
@@ -508,7 +477,7 @@ $validation = $database->validateCartItems($userId);
                                         <div>
                                             <code class="text-success fw-bold"><?php echo $appliedVoucher['code']; ?></code>
                                             <small class="d-block text-muted">
-                                                Giảm <?php echo $appliedVoucher['discount_percent']; ?>%
+                                                <?php echo htmlspecialchars($appliedVoucher['name']); ?>
                                             </small>
                                         </div>
                                         <button class="btn btn-sm btn-outline-danger" id="removeVoucherBtn">
@@ -520,35 +489,21 @@ $validation = $database->validateCartItems($userId);
                                 <!-- Voucher Dropdown -->
                                 <div class="voucher-input">
                                     <?php
-                                    $availableVouchers = getVouchers();
-                                    $validVouchers = [];
-
-                                    // Filter valid vouchers for current cart
-                                    foreach ($availableVouchers as $code => $voucher) {
-                                        if (
-                                            $voucher['is_active'] &&
-                                            $voucher['used_count'] < $voucher['quantity'] &&
-                                            (!$voucher['expires_at'] || new DateTime($voucher['expires_at']) >= new DateTime()) &&
-                                            $totalAmount >= $voucher['min_order_amount']
-                                        ) {
-                                            $validVouchers[$code] = $voucher;
-                                        }
-                                    }
+                                    $availableVouchers = getVouchers($database, $totalAmount);
                                     ?>
 
-                                    <?php if (!empty($validVouchers)): ?>
+                                    <?php if (!empty($availableVouchers)): ?>
                                         <div class="input-group">
                                             <select class="form-select" id="voucherSelect">
                                                 <option value="">Chọn mã giảm giá</option>
-                                                <?php foreach ($validVouchers as $code => $voucher): ?>
-                                                    <option value="<?php echo $code; ?>"
+                                                <?php foreach ($availableVouchers as $voucher): ?>
+                                                    <option value="<?php echo $voucher['code']; ?>"
                                                         data-discount="<?php echo $voucher['discount_percent']; ?>"
-                                                        data-min-amount="<?php echo $voucher['min_order_amount']; ?>">
-                                                        <?php echo $code; ?> -
-                                                        Giảm <?php echo $voucher['discount_percent']; ?>%
-                                                        (Tối thiểu
-                                                        <?php echo number_format($voucher['min_order_amount'] * 1000, 0, ',', '.'); ?>
-                                                        VNĐ)
+                                                        data-min-amount="<?php echo $voucher['min_order_amount']; ?>"
+                                                        data-name="<?php echo htmlspecialchars($voucher['name']); ?>">
+                                                        <?php echo $voucher['code']; ?> -
+                                                        <?php echo htmlspecialchars($voucher['name']); ?>
+                                                        (Giảm <?php echo $voucher['discount_percent']; ?>%)
                                                     </option>
                                                 <?php endforeach; ?>
                                             </select>
@@ -566,16 +521,7 @@ $validation = $database->validateCartItems($userId);
                                     <?php else: ?>
                                         <div class="text-muted text-center py-2">
                                             <i class="fas fa-info-circle"></i>
-                                            <?php if (empty($availableVouchers)): ?>
-                                                Hiện tại không có voucher nào.
-                                            <?php else: ?>
-                                                Không có voucher phù hợp với đơn hàng hiện tại.
-                                                <br><small>Đơn hàng tối thiểu để sử dụng voucher:
-                                                    <?php
-                                                    $minAmount = min(array_column($availableVouchers, 'min_order_amount'));
-                                                    echo number_format($minAmount * 1000, 0, ',', '.');
-                                                    ?> VNĐ</small>
-                                            <?php endif; ?>
+                                            Không có voucher phù hợp với đơn hàng hiện tại.
                                         </div>
                                     <?php endif; ?>
                                 </div>
@@ -685,10 +631,12 @@ $validation = $database->validateCartItems($userId);
                 if (this.value) {
                     const discount = selectedOption.dataset.discount;
                     const minAmount = selectedOption.dataset.minAmount;
+                    const voucherName = selectedOption.dataset.name;
                     const formattedMinAmount = new Intl.NumberFormat('vi-VN').format(minAmount * 1000);
 
                     voucherDescription.innerHTML = `
                         <strong>${this.value}</strong><br>
+                        <i class="fas fa-tag"></i> ${voucherName}<br>
                         <i class="fas fa-percentage"></i> Giảm giá: ${discount}%<br>
                         <i class="fas fa-shopping-cart"></i> Đơn tối thiểu: ${formattedMinAmount} VNĐ
                     `;

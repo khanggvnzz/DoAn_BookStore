@@ -3,7 +3,7 @@
 class User
 {
     // Properties
-    public $id;
+    public $user_id;
     public $name;
     public $phone;
     public $address;

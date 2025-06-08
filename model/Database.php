@@ -322,8 +322,14 @@ class Database
 
         try {
             $stmt = $this->getConnection()->prepare($sql);
-            $stmt->execute($data);
-            return $this->getConnection()->lastInsertId();
+            $result = $stmt->execute($data);
+
+            if ($result) {
+                $lastId = $this->getConnection()->lastInsertId();
+                return $lastId ? (int) $lastId : true; // Return ID if available, or true if successful
+            }
+
+            return false;
         } catch (PDOException $exception) {
             echo "Insert error: " . $exception->getMessage();
             return false;
@@ -388,25 +394,54 @@ class Database
     // Begin transaction
     public function beginTransaction()
     {
-        return $this->getConnection()->beginTransaction();
+        try {
+            if (!$this->getConnection()->inTransaction()) {
+                return $this->getConnection()->beginTransaction();
+            }
+            return true; // Already in transaction
+        } catch (PDOException $e) {
+            error_log('Begin transaction error: ' . $e->getMessage());
+            return false;
+        }
     }
 
     // Commit transaction
     public function commit()
     {
-        return $this->getConnection()->commit();
+        try {
+            if ($this->getConnection()->inTransaction()) {
+                return $this->getConnection()->commit();
+            }
+            return false; // No active transaction
+        } catch (PDOException $e) {
+            error_log('Commit transaction error: ' . $e->getMessage());
+            return false;
+        }
     }
 
     // Rollback transaction
     public function rollback()
     {
-        return $this->getConnection()->rollBack();
+        try {
+            if ($this->getConnection()->inTransaction()) {
+                return $this->getConnection()->rollBack();
+            }
+            return false; // No active transaction
+        } catch (PDOException $e) {
+            error_log('Rollback transaction error: ' . $e->getMessage());
+            return false;
+        }
     }
 
-    // Close connection
-    public function close()
+    // Check if in transaction
+    public function inTransaction()
     {
-        $this->conn = null;
+        try {
+            return $this->getConnection()->inTransaction();
+        } catch (PDOException $e) {
+            error_log('Check transaction error: ' . $e->getMessage());
+            return false;
+        }
     }
 
     /**
@@ -1030,35 +1065,913 @@ class Database
     }
 
     /**
-     * Create new order
+     * Order-specific methods
+     */
+
+    /**
+     * Create new order with product format: bookId*quantity;bookId*quantity
      */
     public function createOrder($orderData)
     {
         try {
-            $result = $this->insert('orders', $orderData);
-            return $result ? $this->conn->lastInsertId() : false;
+            return $this->insert('orders', $orderData);
         } catch (Exception $e) {
             error_log('Create order error: ' . $e->getMessage());
             return false;
         }
     }
 
-    /**
-     * Update voucher usage count
-     */
-    public function updateVoucherUsage($voucherCode)
+    public function updateBookStock($bookId, $quantityChange)
     {
-        $configFile = __DIR__ . '/../config/vouchers.json';
-        if (file_exists($configFile)) {
-            $vouchers = json_decode(file_get_contents($configFile), true);
-            if (isset($vouchers[$voucherCode])) {
-                $vouchers[$voucherCode]['used_count']++;
-                file_put_contents($configFile, json_encode($vouchers, JSON_PRETTY_PRINT));
-                return true;
-            }
-        }
-        return false;
+        $sql = "UPDATE books SET stock = stock + :quantity_change WHERE id = :book_id";
+        $stmt = $this->getConnection()->prepare($sql);
+        return $stmt->execute([
+            'quantity_change' => $quantityChange,
+            'book_id' => $bookId
+        ]);
     }
 
+    public function updateVoucherUsage($voucherId)
+    {
+        $sql = "UPDATE vouchers SET used_count = used_count + 1 WHERE voucher_id = :voucher_id";
+        $stmt = $this->getConnection()->prepare($sql);
+        return $stmt->execute(['voucher_id' => $voucherId]);
+    }
+
+    public function clearUserCart($userId)
+    {
+        $sql = "DELETE FROM cart WHERE user_id = :user_id";
+        $stmt = $this->getConnection()->prepare($sql);
+        return $stmt->execute(['user_id' => $userId]);
+    }
+
+    /**
+     * Get order by ID
+     */
+    public function getOrderById($orderId)
+    {
+        try {
+            if (!is_numeric($orderId) || $orderId <= 0) {
+                throw new InvalidArgumentException('Order ID must be a positive integer');
+            }
+
+            return $this->fetch(
+                "SELECT * FROM orders WHERE order_id = :order_id",
+                ['order_id' => (int) $orderId]
+            );
+        } catch (Exception $e) {
+            error_log('Get order by ID error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Update order
+     */
+    public function updateOrder($orderId, $orderData)
+    {
+        try {
+            if (!is_numeric($orderId) || $orderId <= 0) {
+                throw new InvalidArgumentException('Order ID must be a positive integer');
+            }
+
+            // Validate and clean data
+            $allowedFields = ['user_id', 'product', 'cost', 'pay_method', 'note', 'voucher_id'];
+            $cleanData = [];
+
+            foreach ($orderData as $field => $value) {
+                if (in_array($field, $allowedFields)) {
+                    switch ($field) {
+                        case 'user_id':
+                        case 'voucher_id':
+                            if ($value !== null && !is_numeric($value)) {
+                                throw new Exception("{$field} must be numeric or null");
+                            }
+                            $cleanData[$field] = $value !== null ? (int) $value : null;
+                            break;
+                        case 'cost':
+                            if (!is_numeric($value)) {
+                                throw new Exception("cost must be numeric");
+                            }
+                            $cleanData[$field] = (float) $value;
+                            break;
+                        case 'product':
+                        case 'pay_method':
+                        case 'note':
+                            $cleanData[$field] = $value !== null ? trim($value) : null;
+                            break;
+                    }
+                }
+            }
+
+            if (empty($cleanData)) {
+                throw new Exception("No valid fields to update");
+            }
+
+            return $this->update(
+                'orders',
+                $cleanData,
+                'order_id = :order_id',
+                ['order_id' => (int) $orderId]
+            );
+
+        } catch (Exception $e) {
+            error_log('Update order error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Delete order
+     */
+    public function deleteOrder($orderId)
+    {
+        try {
+            if (!is_numeric($orderId) || $orderId <= 0) {
+                throw new InvalidArgumentException('Order ID must be a positive integer');
+            }
+
+            return $this->delete(
+                'orders',
+                'order_id = :order_id',
+                ['order_id' => (int) $orderId]
+            );
+
+        } catch (Exception $e) {
+            error_log('Delete order error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Get orders by user ID
+     */
+    public function getOrdersByUserId($userId, $page = 1, $perPage = 10, $orderBy = 'created_at DESC')
+    {
+        try {
+            if (!is_numeric($userId) || $userId <= 0) {
+                throw new InvalidArgumentException('User ID must be a positive integer');
+            }
+
+            $offset = ($page - 1) * $perPage;
+
+            $orders = $this->fetchAll(
+                "SELECT * FROM orders 
+                 WHERE user_id = :user_id 
+                 ORDER BY {$orderBy}
+                 LIMIT :limit OFFSET :offset",
+                [
+                    'user_id' => (int) $userId,
+                    'limit' => $perPage,
+                    'offset' => $offset
+                ]
+            );
+
+            // Get total count for pagination
+            $totalOrders = $this->count('orders', 'user_id = :user_id', ['user_id' => (int) $userId]);
+            $totalPages = ceil($totalOrders / $perPage);
+
+            return [
+                'orders' => $orders,
+                'pagination' => [
+                    'current_page' => $page,
+                    'per_page' => $perPage,
+                    'total_records' => $totalOrders,
+                    'total_pages' => $totalPages,
+                    'has_previous' => $page > 1,
+                    'has_next' => $page < $totalPages
+                ]
+            ];
+
+        } catch (Exception $e) {
+            error_log('Get orders by user ID error: ' . $e->getMessage());
+            return [
+                'orders' => [],
+                'pagination' => [
+                    'current_page' => 1,
+                    'per_page' => $perPage,
+                    'total_records' => 0,
+                    'total_pages' => 0,
+                    'has_previous' => false,
+                    'has_next' => false
+                ]
+            ];
+        }
+    }
+
+    /**
+     * Get all orders with pagination and filtering
+     */
+    public function getAllOrders($page = 1, $perPage = 15, $filters = [])
+    {
+        try {
+            $where = '';
+            $params = [];
+            $conditions = [];
+
+            // Build WHERE clause based on filters
+            if (!empty($filters['user_id'])) {
+                $conditions[] = "user_id = :user_id";
+                $params['user_id'] = (int) $filters['user_id'];
+            }
+
+            if (!empty($filters['pay_method'])) {
+                $conditions[] = "pay_method = :pay_method";
+                $params['pay_method'] = $filters['pay_method'];
+            }
+
+            if (!empty($filters['voucher_id'])) {
+                $conditions[] = "voucher_id = :voucher_id";
+                $params['voucher_id'] = (int) $filters['voucher_id'];
+            }
+
+            if (!empty($filters['date_from'])) {
+                $conditions[] = "created_at >= :date_from";
+                $params['date_from'] = $filters['date_from'];
+            }
+
+            if (!empty($filters['date_to'])) {
+                $conditions[] = "created_at <= :date_to";
+                $params['date_to'] = $filters['date_to'];
+            }
+
+            if (!empty($filters['min_cost'])) {
+                $conditions[] = "cost >= :min_cost";
+                $params['min_cost'] = (float) $filters['min_cost'];
+            }
+
+            if (!empty($filters['max_cost'])) {
+                $conditions[] = "cost <= :max_cost";
+                $params['max_cost'] = (float) $filters['max_cost'];
+            }
+
+            if (!empty($conditions)) {
+                $where = 'WHERE ' . implode(' AND ', $conditions);
+            }
+
+            $offset = ($page - 1) * $perPage;
+            $orderBy = $filters['order_by'] ?? 'created_at DESC';
+
+            $sql = "SELECT * FROM orders {$where} ORDER BY {$orderBy} LIMIT :limit OFFSET :offset";
+            $params['limit'] = $perPage;
+            $params['offset'] = $offset;
+
+            $orders = $this->fetchAll($sql, $params);
+
+            // Get total count for pagination
+            $countSql = "SELECT COUNT(*) as count FROM orders {$where}";
+            $countParams = array_diff_key($params, ['limit' => '', 'offset' => '']);
+            $totalOrders = $this->fetch($countSql, $countParams)['count'];
+            $totalPages = ceil($totalOrders / $perPage);
+
+            return [
+                'orders' => $orders,
+                'pagination' => [
+                    'current_page' => $page,
+                    'per_page' => $perPage,
+                    'total_records' => $totalOrders,
+                    'total_pages' => $totalPages,
+                    'has_previous' => $page > 1,
+                    'has_next' => $page < $totalPages
+                ]
+            ];
+
+        } catch (Exception $e) {
+            error_log('Get all orders error: ' . $e->getMessage());
+            return [
+                'orders' => [],
+                'pagination' => [
+                    'current_page' => 1,
+                    'per_page' => $perPage,
+                    'total_records' => 0,
+                    'total_pages' => 0,
+                    'has_previous' => false,
+                    'has_next' => false
+                ]
+            ];
+        }
+    }
+
+    /**
+     * Check if order belongs to user
+     */
+    public function isOrderOwnedByUser($orderId, $userId)
+    {
+        try {
+            if (!is_numeric($orderId) || $orderId <= 0) {
+                return false;
+            }
+            if (!is_numeric($userId) || $userId <= 0) {
+                return false;
+            }
+
+            return $this->exists(
+                'orders',
+                'order_id = :order_id AND user_id = :user_id',
+                [
+                    'order_id' => (int) $orderId,
+                    'user_id' => (int) $userId
+                ]
+            );
+        } catch (Exception $e) {
+            error_log('Check order ownership error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Parse product string to get book items
+     * Format: bookId*quantity;bookId*quantity
+     */
+    public function parseProductString($productString)
+    {
+        try {
+            if (empty($productString)) {
+                return [];
+            }
+
+            $items = [];
+            $parts = explode(';', trim($productString));
+
+            foreach ($parts as $part) {
+                $part = trim($part);
+                if (strpos($part, '*') !== false) {
+                    list($bookId, $quantity) = explode('*', $part, 2);
+                    $bookId = (int) trim($bookId);
+                    $quantity = (int) trim($quantity);
+
+                    if ($bookId > 0 && $quantity > 0) {
+                        $items[] = [
+                            'book_id' => $bookId,
+                            'quantity' => $quantity
+                        ];
+                    }
+                }
+            }
+
+            return $items;
+        } catch (Exception $e) {
+            error_log('Parse product string error: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Build product string from book items
+     * Format: bookId*quantity;bookId*quantity
+     */
+    public function buildProductString($items)
+    {
+        try {
+            if (empty($items) || !is_array($items)) {
+                return '';
+            }
+
+            $productParts = [];
+            foreach ($items as $item) {
+                if (isset($item['book_id']) && isset($item['quantity'])) {
+                    $bookId = (int) $item['book_id'];
+                    $quantity = (int) $item['quantity'];
+
+                    if ($bookId > 0 && $quantity > 0) {
+                        $productParts[] = "{$bookId}*{$quantity}";
+                    }
+                }
+            }
+
+            return implode(';', $productParts);
+        } catch (Exception $e) {
+            error_log('Build product string error: ' . $e->getMessage());
+            return '';
+        }
+    }
+
+    /**
+     * Get order details with book information
+     */
+    public function getOrderWithBooks($orderId)
+    {
+        try {
+            $order = $this->getOrderById($orderId);
+
+            if (!$order) {
+                return null;
+            }
+
+            // Parse product string to get book items
+            $items = $this->parseProductString($order['product']);
+
+            // Get book details for each item
+            $orderItems = [];
+            foreach ($items as $item) {
+                $book = $this->fetch("SELECT * FROM books WHERE id = :id", ['id' => $item['book_id']]);
+                if ($book) {
+                    $orderItems[] = [
+                        'book_id' => $item['book_id'],
+                        'quantity' => $item['quantity'],
+                        'book_title' => $book['title'],
+                        'book_author' => $book['author'],
+                        'book_price' => $book['price'],
+                        'book_image' => $book['image'],
+                        'book_category' => $book['category'],
+                        'total_price' => $book['price'] * $item['quantity']
+                    ];
+                }
+            }
+
+            $order['items'] = $orderItems;
+            return $order;
+
+        } catch (Exception $e) {
+            error_log('Get order with books error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Get orders by payment method
+     */
+    public function getOrdersByPaymentMethod($payMethod, $page = 1, $perPage = 15)
+    {
+        try {
+            return $this->getAllOrders($page, $perPage, ['pay_method' => $payMethod]);
+        } catch (Exception $e) {
+            error_log('Get orders by payment method error: ' . $e->getMessage());
+            return [
+                'orders' => [],
+                'pagination' => [
+                    'current_page' => 1,
+                    'per_page' => $perPage,
+                    'total_records' => 0,
+                    'total_pages' => 0,
+                    'has_previous' => false,
+                    'has_next' => false
+                ]
+            ];
+        }
+    }
+
+    /**
+     * Get orders by voucher ID
+     */
+    public function getOrdersByVoucherId($voucherId, $page = 1, $perPage = 15)
+    {
+        try {
+            if (!is_numeric($voucherId) || $voucherId <= 0) {
+                throw new InvalidArgumentException('Voucher ID must be a positive integer');
+            }
+
+            return $this->getAllOrders($page, $perPage, ['voucher_id' => (int) $voucherId]);
+        } catch (Exception $e) {
+            error_log('Get orders by voucher ID error: ' . $e->getMessage());
+            return [
+                'orders' => [],
+                'pagination' => [
+                    'current_page' => 1,
+                    'per_page' => $perPage,
+                    'total_records' => 0,
+                    'total_pages' => 0,
+                    'has_previous' => false,
+                    'has_next' => false
+                ]
+            ];
+        }
+    }
+
+    /**
+     * Get order statistics
+     */
+    public function getOrderStatistics($dateFrom = null, $dateTo = null)
+    {
+        try {
+            $where = '';
+            $params = [];
+
+            if ($dateFrom && $dateTo) {
+                $where = 'WHERE created_at BETWEEN :date_from AND :date_to';
+                $params = ['date_from' => $dateFrom, 'date_to' => $dateTo];
+            } elseif ($dateFrom) {
+                $where = 'WHERE created_at >= :date_from';
+                $params = ['date_from' => $dateFrom];
+            } elseif ($dateTo) {
+                $where = 'WHERE created_at <= :date_to';
+                $params = ['date_to' => $dateTo];
+            }
+
+            $stats = $this->fetch(
+                "SELECT 
+                COUNT(*) as total_orders,
+                SUM(cost) as total_revenue,
+                AVG(cost) as average_order_value,
+                MIN(cost) as min_order_value,
+                MAX(cost) as max_order_value,
+                COUNT(DISTINCT user_id) as unique_customers,
+                COUNT(CASE WHEN voucher_id IS NOT NULL THEN 1 END) as orders_with_voucher
+             FROM orders {$where}",
+                $params
+            );
+
+            // Get payment method breakdown
+            $paymentMethods = $this->fetchAll(
+                "SELECT 
+                pay_method,
+                COUNT(*) as count,
+                SUM(cost) as total_amount
+             FROM orders {$where}
+             GROUP BY pay_method
+             ORDER BY count DESC",
+                $params
+            );
+
+            $stats['payment_methods'] = $paymentMethods;
+
+            return $stats;
+        } catch (Exception $e) {
+            error_log('Get order statistics error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Get recent orders
+     */
+    public function getRecentOrders($limit = 10)
+    {
+        try {
+            if (!is_numeric($limit) || $limit <= 0) {
+                $limit = 10;
+            }
+
+            return $this->fetchAll(
+                "SELECT o.*, u.username 
+             FROM orders o 
+             LEFT JOIN users u ON o.user_id = u.user_id 
+             ORDER BY o.created_at DESC 
+             LIMIT :limit",
+                ['limit' => (int) $limit]
+            );
+        } catch (Exception $e) {
+            error_log('Get recent orders error: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Search orders
+     */
+    public function searchOrders($keyword, $page = 1, $perPage = 15)
+    {
+        try {
+            if (empty($keyword)) {
+                return $this->getAllOrders($page, $perPage);
+            }
+
+            $searchTerm = '%' . $keyword . '%';
+            $offset = ($page - 1) * $perPage;
+
+            $sql = "SELECT o.*, u.username 
+                FROM orders o 
+                LEFT JOIN users u ON o.user_id = u.user_id 
+                WHERE o.order_id LIKE :search 
+                   OR o.product LIKE :search 
+                   OR o.pay_method LIKE :search 
+                   OR o.note LIKE :search 
+                   OR u.username LIKE :search
+                ORDER BY o.created_at DESC 
+                LIMIT :limit OFFSET :offset";
+
+            $params = [
+                'search' => $searchTerm,
+                'limit' => $perPage,
+                'offset' => $offset
+            ];
+
+            $orders = $this->fetchAll($sql, $params);
+
+            // Get total count for pagination
+            $countSql = "SELECT COUNT(*) as count 
+                     FROM orders o 
+                     LEFT JOIN users u ON o.user_id = u.user_id 
+                     WHERE o.order_id LIKE :search 
+                        OR o.product LIKE :search 
+                        OR o.pay_method LIKE :search 
+                        OR o.note LIKE :search 
+                        OR u.username LIKE :search";
+
+            $totalOrders = $this->fetch($countSql, ['search' => $searchTerm])['count'];
+            $totalPages = ceil($totalOrders / $perPage);
+
+            return [
+                'orders' => $orders,
+                'pagination' => [
+                    'current_page' => $page,
+                    'per_page' => $perPage,
+                    'total_records' => $totalOrders,
+                    'total_pages' => $totalPages,
+                    'has_previous' => $page > 1,
+                    'has_next' => $page < $totalPages
+                ]
+            ];
+
+        } catch (Exception $e) {
+            error_log('Search orders error: ' . $e->getMessage());
+            return [
+                'orders' => [],
+                'pagination' => [
+                    'current_page' => 1,
+                    'per_page' => $perPage,
+                    'total_records' => 0,
+                    'total_pages' => 0,
+                    'has_previous' => false,
+                    'has_next' => false
+                ]
+            ];
+        }
+    }
+
+    /**
+     * Get available vouchers for order
+     * Returns vouchers that are active, not expired, and haven't reached usage limit
+     */
+    public function getAvailableVouchersForOrder($orderAmount = 0, $userId = null)
+    {
+        try {
+            $currentDate = date('Y-m-d H:i:s');
+            $where = [];
+            $params = [];
+
+            // Base conditions for active vouchers
+            $where[] = "is_active = 'active'";
+            $where[] = "created_at <= :expires_at";
+            $where[] = "expires_at >= :current_date";
+            $where[] = "(usage_limit IS NULL OR used_count < usage_limit)";
+
+            $params['current_date'] = $currentDate;
+
+            // Filter by minimum order amount if specified
+            if ($orderAmount > 0) {
+                $where[] = "(min_order_amount IS NULL OR min_order_amount <= :order_amount)";
+                $params['order_amount'] = (float) $orderAmount;
+            }
+
+            $whereClause = implode(' AND ', $where);
+
+            $vouchers = $this->fetchAll(
+                "SELECT 
+                    voucher_id,
+                    code,
+                    name,
+                    description,
+                    min_order_amount,
+                    discount_percent,
+                    quantity,
+                    used_count,
+                    is_active,
+                    created_at,
+                    expires_at
+                 FROM vouchers 
+                 WHERE {$whereClause}
+                 ORDER BY created_at DESC",
+                array_merge($params, ['order_amount_sort' => max($orderAmount, 1)])
+            );
+
+            // Calculate actual discount for each voucher
+            foreach ($vouchers as &$voucher) {
+                $voucher['calculated_discount'] = $this->calculateVoucherDiscount(
+                    $voucher,
+                    $orderAmount
+                );
+
+                // Add remaining usage info
+                if ($voucher['usage_limit']) {
+                    $voucher['remaining_uses'] = max(0, $voucher['usage_limit'] - $voucher['used_count']);
+                } else {
+                    $voucher['remaining_uses'] = null; // Unlimited
+                }
+
+                // Format dates for display
+                $voucher['start_date_formatted'] = date('d/m/Y H:i', strtotime($voucher['start_date']));
+                $voucher['end_date_formatted'] = date('d/m/Y H:i', strtotime($voucher['end_date']));
+
+                // Calculate days until expiry
+                $endDate = new DateTime($voucher['end_date']);
+                $today = new DateTime();
+                $voucher['days_until_expiry'] = $endDate->diff($today)->days;
+                if ($endDate < $today) {
+                    $voucher['days_until_expiry'] = 0;
+                }
+            }
+
+            return $vouchers;
+
+        } catch (Exception $e) {
+            error_log('Get available vouchers error: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Calculate discount amount for a specific voucher and order amount
+     */
+    public function calculateVoucherDiscount($voucher, $orderAmount)
+    {
+        try {
+            if ($orderAmount <= 0) {
+                return 0;
+            }
+
+            // Check minimum order amount requirement
+            if ($voucher['min_order_amount'] && $orderAmount < $voucher['min_order_amount']) {
+                return 0;
+            }
+
+            $discountAmount = 0;
+
+            if ($voucher['discount_type'] === 'percentage') {
+                // Percentage discount
+                $discountAmount = ($orderAmount * $voucher['discount_value']) / 100;
+
+                // Apply maximum discount limit if set
+                if ($voucher['max_discount_amount'] && $discountAmount > $voucher['max_discount_amount']) {
+                    $discountAmount = $voucher['max_discount_amount'];
+                }
+            } else {
+                // Fixed amount discount
+                $discountAmount = $voucher['discount_value'];
+            }
+
+            // Ensure discount doesn't exceed order amount
+            $discountAmount = min($discountAmount, $orderAmount);
+
+            return round($discountAmount, 2);
+
+        } catch (Exception $e) {
+            error_log('Calculate voucher discount error: ' . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Check if a specific voucher can be applied to an order
+     */
+    public function canApplyVoucher($voucherCode, $orderAmount, $userId = null)
+    {
+        try {
+            $voucher = $this->fetch(
+                "SELECT * FROM vouchers WHERE code = :code LIMIT 1",
+                ['code' => $voucherCode]
+            );
+
+            if (!$voucher) {
+                return [
+                    'valid' => false,
+                    'message' => 'Mã voucher không tồn tại',
+                    'voucher' => null
+                ];
+            }
+
+            $currentDate = date('Y-m-d H:i:s');
+
+            // Check if voucher is active
+            if (!$voucher['is_active']) {
+                return [
+                    'valid' => false,
+                    'message' => 'Voucher đã bị vô hiệu hóa',
+                    'voucher' => $voucher
+                ];
+            }
+
+            // Check if voucher has expired
+            if ($voucher['expires_at'] && $voucher['expires_at'] < $currentDate) {
+                return [
+                    'valid' => false,
+                    'message' => 'Voucher đã hết hạn',
+                    'voucher' => $voucher
+                ];
+            }
+
+            // Check usage limit
+            if ($voucher['used_count'] >= $voucher['quantity']) {
+                return [
+                    'valid' => false,
+                    'message' => 'Voucher đã hết lượt sử dụng',
+                    'voucher' => $voucher
+                ];
+            }
+
+            // Check minimum order amount
+            if ($voucher['min_order_amount'] && $orderAmount < $voucher['min_order_amount']) {
+                $minAmount = number_format($voucher['min_order_amount'] * 1000, 0, ',', '.');
+                return [
+                    'valid' => false,
+                    'message' => "Đơn hàng tối thiểu {$minAmount} VNĐ để sử dụng voucher này",
+                    'voucher' => $voucher
+                ];
+            }
+
+            // Calculate discount amount
+            $discountAmount = ($orderAmount * $voucher['discount_percent']) / 100;
+
+            return [
+                'valid' => true,
+                'message' => 'Voucher hợp lệ',
+                'voucher' => $voucher,
+                'discount_amount' => $discountAmount
+            ];
+
+        } catch (Exception $e) {
+            error_log('Can apply voucher error: ' . $e->getMessage());
+            return [
+                'valid' => false,
+                'message' => 'Có lỗi xảy ra khi kiểm tra voucher',
+                'voucher' => null
+            ];
+        }
+    }
+
+    /**
+     * Get voucher by code
+     */
+    public function getVoucherByCode($code)
+    {
+        try {
+            return $this->fetch(
+                "SELECT * FROM vouchers WHERE code = :code LIMIT 1",
+                ['code' => $code]
+            );
+        } catch (Exception $e) {
+            error_log('Get voucher by code error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Get voucher by ID
+     */
+    public function getVoucherById($voucherId)
+    {
+        try {
+            if (!is_numeric($voucherId) || $voucherId <= 0) {
+                return null;
+            }
+
+            return $this->fetch(
+                "SELECT * FROM vouchers WHERE voucher_id = :voucher_id LIMIT 1",
+                ['voucher_id' => (int) $voucherId]
+            );
+        } catch (Exception $e) {
+            error_log('Get voucher by ID error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    public function getAllActiveVouchers($orderAmount = 0)
+    {
+        try {
+            $currentDate = date('Y-m-d H:i:s');
+            $where = [];
+            $params = [];
+
+            // Base conditions for active vouchers
+            $where[] = "is_active = 1";
+            $where[] = "expires_at >= :current_date";
+            $where[] = "used_count < quantity";
+
+            $params['current_date'] = $currentDate;
+
+            // Filter by minimum order amount if specified
+            if ($orderAmount > 0) {
+                $where[] = "min_order_amount <= :order_amount";
+                $params['order_amount'] = (float) $orderAmount;
+            }
+
+            $whereClause = implode(' AND ', $where);
+
+            $vouchers = $this->fetchAll(
+                "SELECT 
+                voucher_id,
+                code,
+                name,
+                description,
+                min_order_amount,
+                discount_percent,
+                quantity,
+                used_count,
+                is_active,
+                created_at,
+                expires_at
+             FROM vouchers 
+             WHERE {$whereClause}
+             ORDER BY discount_percent DESC, min_order_amount ASC",
+                $params
+            );
+
+            return $vouchers ?: [];
+
+        } catch (Exception $e) {
+            error_log('Get all active vouchers error: ' . $e->getMessage());
+            return [];
+        }
+    }
 }
 ?>

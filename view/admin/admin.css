@@ -40,3 +40,82 @@
     background-color: #fff3cd;
     border-color: #ffeaa7;
 }
+
+/* Voucher status styling */
+.table-warning {
+    background-color: rgba(255, 193, 7, 0.1) !important;
+}
+
+.card-header.bg-success {
+    background-color: #198754 !important;
+}
+
+.card-header.bg-warning {
+    background-color: #ffc107 !important;
+}
+
+/* Voucher code styling */
+code.bg-success {
+    background-color: rgba(25, 135, 84, 0.1) !important;
+    color: #198754 !important;
+    border: 1px solid rgba(25, 135, 84, 0.2);
+}
+
+code.bg-warning {
+    background-color: rgba(255, 193, 7, 0.1) !important;
+    color: #856404 !important;
+    border: 1px solid rgba(255, 193, 7, 0.2);
+}
+
+/* Button group spacing */
+.btn-group-sm .btn {
+    margin-right: 2px;
+}
+
+.btn-group-sm .btn:last-child {
+    margin-right: 0;
+}
+
+/* Status indicators */
+.badge.bg-success {
+    background-color: #198754 !important;
+}
+
+.badge.bg-secondary {
+    background-color: #6c757d !important;
+}
+
+.badge.bg-warning {
+    background-color: #ffc107 !important;
+    color: #000 !important;
+}
+
+.badge.bg-danger {
+    background-color: #dc3545 !important;
+}
+
+.badge.bg-info {
+    background-color: #0dcaf0 !important;
+    color: #000 !important;
+}
+
+/* Hover effects */
+.table tbody tr:hover {
+    background-color: rgba(0, 0, 0, 0.075);
+}
+
+.card-header h5 {
+    margin: 0;
+}
+
+/* Icon spacing */
+.card-header i {
+    margin-right: 8px;
+}
+
+.text-danger i,
+.text-warning i,
+.text-info i,
+.text-success i {
+    margin-right: 4px;
+}
