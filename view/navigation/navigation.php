@@ -161,13 +161,8 @@ $userPermission = isset($_SESSION['user_permission']) ? $_SESSION['user_permissi
                                     </a>
                                 </li>
                                 <li>
-                                    <a class="dropdown-item" href="/DoAn_BookStore/orders">
+                                    <a class="dropdown-item" href="/DoAn_BookStore/view/orders/order.php">
                                         <i class="fas fa-shopping-bag"></i> Đơn hàng của tôi
-                                    </a>
-                                </li>
-                                <li>
-                                    <a class="dropdown-item" href="/DoAn_BookStore/wishlist">
-                                        <i class="fas fa-heart"></i> Yêu thích
                                     </a>
                                 </li>
 
@@ -179,21 +174,6 @@ $userPermission = isset($_SESSION['user_permission']) ? $_SESSION['user_permissi
                                     <li>
                                         <a class="dropdown-item" href="/DoAn_BookStore/view/admin/admin.php">
                                             <i class="fas fa-tachometer-alt"></i> Bảng điều khiển
-                                        </a>
-                                    </li>
-                                    <li>
-                                        <a class="dropdown-item" href="/DoAn_BookStore/admin/books">
-                                            <i class="fas fa-book"></i> Quản lý sách
-                                        </a>
-                                    </li>
-                                    <li>
-                                        <a class="dropdown-item" href="/DoAn_BookStore/admin/users">
-                                            <i class="fas fa-users"></i> Quản lý người dùng
-                                        </a>
-                                    </li>
-                                    <li>
-                                        <a class="dropdown-item" href="/DoAn_BookStore/admin/orders">
-                                            <i class="fas fa-shopping-cart"></i> Quản lý đơn hàng
                                         </a>
                                     </li>
                                 <?php endif; ?>

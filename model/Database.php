@@ -499,6 +499,54 @@ class Database
         return false;
     }
 
+    public function getUserOrderStats($userId)
+    {
+        try {
+            if (!is_numeric($userId) || $userId <= 0) {
+                throw new InvalidArgumentException('User ID must be a positive integer');
+            }
+
+            $stats = [
+                'pending' => 0,
+                'confirmed' => 0,
+                'cancelled' => 0,
+                'total' => 0
+            ];
+
+            // Get counts for each status
+            $stats['pending'] = $this->count(
+                'orders',
+                'user_id = :user_id AND status = :status',
+                ['user_id' => $userId, 'status' => 'pending']
+            );
+
+            $stats['confirmed'] = $this->count(
+                'orders',
+                'user_id = :user_id AND status = :status',
+                ['user_id' => $userId, 'status' => 'confirmed']
+            );
+
+            $stats['cancelled'] = $this->count(
+                'orders',
+                'user_id = :user_id AND status = :status',
+                ['user_id' => $userId, 'status' => 'cancelled']
+            );
+
+            $stats['total'] = $this->count('orders', 'user_id = :user_id', ['user_id' => $userId]);
+
+            return $stats;
+
+        } catch (Exception $e) {
+            error_log('Get user order stats error: ' . $e->getMessage());
+            return [
+                'pending' => 0,
+                'confirmed' => 0,
+                'cancelled' => 0,
+                'total' => 0
+            ];
+        }
+    }
+
     /**
      * Get user by username or email
      */
@@ -1371,56 +1419,47 @@ class Database
     /**
      * Get orders by user ID
      */
-    public function getOrdersByUserId($userId, $page = 1, $perPage = 10, $orderBy = 'created_at DESC')
+    public function getOrdersByUserId($userId, $page = 1, $perPage = 10)
     {
         try {
-            if (!is_numeric($userId) || $userId <= 0) {
-                throw new InvalidArgumentException('User ID must be a positive integer');
-            }
+            $userId = (int) $userId;
+            $page = max(1, (int) $page);
+            $perPage = max(1, min(100, (int) $perPage));
 
             $offset = ($page - 1) * $perPage;
 
+            // Count total orders for this user using existing count method
+            $totalRecords = $this->count('orders', 'user_id = :user_id', ['user_id' => $userId]);
+            $totalPages = ceil($totalRecords / $perPage);
+
+            // Get orders with pagination using existing fetchAll method
             $orders = $this->fetchAll(
-                "SELECT * FROM orders 
-                 WHERE user_id = :user_id 
-                 ORDER BY {$orderBy}
-                 LIMIT :limit OFFSET :offset",
-                [
-                    'user_id' => (int) $userId,
-                    'limit' => $perPage,
-                    'offset' => $offset
-                ]
+                "SELECT orders.*, users.username, users.email 
+             FROM orders 
+             LEFT JOIN users ON orders.user_id = users.user_id 
+             WHERE orders.user_id = :user_id 
+             ORDER BY orders.created_at DESC 
+             LIMIT {$perPage} OFFSET {$offset}",
+                ['user_id' => $userId]
             );
 
-            // Get total count for pagination
-            $totalOrders = $this->count('orders', 'user_id = :user_id', ['user_id' => (int) $userId]);
-            $totalPages = ceil($totalOrders / $perPage);
-
             return [
-                'orders' => $orders,
+                'orders' => $orders ?: [],
                 'pagination' => [
                     'current_page' => $page,
                     'per_page' => $perPage,
-                    'total_records' => $totalOrders,
+                    'total_records' => $totalRecords,
                     'total_pages' => $totalPages,
                     'has_previous' => $page > 1,
-                    'has_next' => $page < $totalPages
+                    'has_next' => $page < $totalPages,
+                    'previous_page' => $page > 1 ? $page - 1 : null,
+                    'next_page' => $page < $totalPages ? $page + 1 : null
                 ]
             ];
 
         } catch (Exception $e) {
-            error_log('Get orders by user ID error: ' . $e->getMessage());
-            return [
-                'orders' => [],
-                'pagination' => [
-                    'current_page' => 1,
-                    'per_page' => $perPage,
-                    'total_records' => 0,
-                    'total_pages' => 0,
-                    'has_previous' => false,
-                    'has_next' => false
-                ]
-            ];
+            error_log('getOrdersByUserId error: ' . $e->getMessage());
+            throw new Exception('Không thể lấy danh sách đơn hàng: ' . $e->getMessage());
         }
     }
 
@@ -2850,93 +2889,7 @@ class Database
             return false;
         }
     }
-    // public function getAllActiveVouchers()
-    // {
-    //     $sql = "SELECT * FROM vouchers 
-    //         WHERE is_active = 1 
-    //         AND expires_at > NOW() 
-    //         AND (quantity - used_count) > 0 
-    //         ORDER BY discount_percent DESC, expires_at ASC";
 
-    //     return $this->fetchAll($sql);
-    // }
-
-    /**
-     * Get voucher by code with expiry check
-     */
-    // public function getVoucherByCode($code)
-    // {
-    //     $sql = "SELECT * FROM vouchers 
-    //         WHERE code = :code 
-    //         AND is_active = 1 
-    //         AND expires_at > NOW() 
-    //         AND (quantity - used_count) > 0";
-
-    //     return $this->fetch($sql, ['code' => $code]);
-    // }
-
-    // /**
-    //  * Check if voucher can be applied
-    //  */
-    // public function canApplyVoucher($voucherCode, $orderAmount = 0)
-    // {
-    //     try {
-    //         $voucher = $this->getVoucherByCode($voucherCode);
-
-    //         if (!$voucher) {
-    //             return [
-    //                 'valid' => false,
-    //                 'message' => 'Mã voucher không tồn tại hoặc đã hết hạn'
-    //             ];
-    //         }
-
-    //         // Check if voucher is expired
-    //         if (strtotime($voucher['expires_at']) <= time()) {
-    //             return [
-    //                 'valid' => false,
-    //                 'message' => 'Mã voucher đã hết hạn'
-    //             ];
-    //         }
-
-    //         // Check if voucher is used up
-    //         if ($voucher['used_count'] >= $voucher['quantity']) {
-    //             return [
-    //                 'valid' => false,
-    //                 'message' => 'Mã voucher đã được sử dụng hết'
-    //             ];
-    //         }
-
-    //         // Check minimum order amount
-    //         if ($voucher['min_order_amount'] > 0 && $orderAmount < $voucher['min_order_amount']) {
-    //             return [
-    //                 'valid' => false,
-    //                 'message' => 'Đơn hàng phải có giá trị tối thiểu ' . number_format($voucher['min_order_amount'] * 1000, 0, ',', '.') . ' VNĐ'
-    //             ];
-    //         }
-
-    //         // Calculate discount amount
-    //         $discountAmount = ($orderAmount * $voucher['discount_percent']) / 100;
-
-    //         // Check maximum discount if set
-    //         if (isset($voucher['max_discount_amount']) && $voucher['max_discount_amount'] > 0) {
-    //             $discountAmount = min($discountAmount, $voucher['max_discount_amount']);
-    //         }
-
-    //         return [
-    //             'valid' => true,
-    //             'message' => 'Mã voucher hợp lệ',
-    //             'voucher' => $voucher,
-    //             'discount_amount' => $discountAmount,
-    //             'final_amount' => max(0, $orderAmount - $discountAmount)
-    //         ];
-
-    //     } catch (Exception $e) {
-    //         return [
-    //             'valid' => false,
-    //             'message' => 'Có lỗi xảy ra khi kiểm tra voucher: ' . $e->getMessage()
-    //         ];
-    //     }
-    // }
 
     /**
      * Check if voucher is expired
