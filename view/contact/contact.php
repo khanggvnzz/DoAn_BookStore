@@ -269,9 +269,8 @@ try {
                                         <i class="fas fa-envelope me-2"></i>
                                         Email chung
                                     </h5>
-                                    <a href="mailto:khangvu782004+support_bookstore@gmail.com"
-                                        class="text-white text-decoration-none">
-                                        khangvu782004+support_bookstore@gmail.com
+                                    <a href="mailto:bookstore.sp1@gmail.com" class="text-white text-decoration-none">
+                                        bookstore.sp1@gmail.com
                                     </a>
                                 </div>
                                 <div class="col-md-6 mb-3">

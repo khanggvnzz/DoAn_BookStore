@@ -201,17 +201,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                     <div class="form-floating">
                                         <input type="tel" class="form-control" id="customer_phone" name="customer_phone"
                                             value="<?php echo htmlspecialchars($user->phone ?? ''); ?>" required>
+                                        <label for="customer_phone">Số điện thoại*</label>
                                     </div>
                                 </div>
                             </div>
                             <div class="form-floating">
                                 <input type="email" class="form-control" id="customer_email" name="customer_email"
                                     value="<?php echo htmlspecialchars($user->email ?? ''); ?>">
+                                <label for="customer_email">Email *</label>
                             </div>
                             <div class="form-floating">
                                 <textarea class="form-control" id="shipping_address" name="shipping_address"
                                     style="height: 100px"
                                     required><?php echo htmlspecialchars($user->address ?? ''); ?></textarea>
+                                <label for="customer_address">Địa chỉ *</label>
                             </div>
                         </div>
                     </div>
