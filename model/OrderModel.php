@@ -9,8 +9,9 @@ class Order
     private $created_at;
     private $pay_method;
     private $note;
+    private $voucher_id;
 
-    public function __construct($order_id = null, $user_id = null, $product = null, $cost = null, $created_at = null, $pay_method = null, $note = null)
+    public function __construct($order_id = null, $user_id = null, $product = null, $cost = null, $created_at = null, $pay_method = null, $note = null, $voucher_id = null)
     {
         $this->order_id = $order_id;
         $this->user_id = $user_id;
@@ -19,6 +20,8 @@ class Order
         $this->created_at = $created_at;
         $this->pay_method = $pay_method;
         $this->note = $note;
+        $this->voucher_id = $voucher_id;
+
     }
 
     public function toArray()
@@ -30,7 +33,8 @@ class Order
             'cost' => $this->cost,
             'created_at' => $this->created_at,
             'pay_method' => $this->pay_method,
-            'note' => $this->note
+            'note' => $this->note,
+            'voucher_id' => $this->voucher_id
         ];
     }
 }

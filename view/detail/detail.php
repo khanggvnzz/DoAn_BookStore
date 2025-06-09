@@ -1,9 +1,167 @@
 <?php
-
+session_start();
 require_once '../../model/Database.php';
 
 // Khởi tạo database
 $db = new Database();
+
+// Xử lý AJAX request cho thêm vào giỏ hàng
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_to_cart') {
+    header('Content-Type: application/json');
+
+    try {
+        // Kiểm tra đăng nhập
+        if (!isset($_SESSION['user_id'])) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Vui lòng đăng nhập để thêm sách vào giỏ hàng',
+                'redirect' => '/DoAn_BookStore/view/auth/login.php'
+            ]);
+            exit();
+        }
+
+        $bookId = isset($_POST['book_id']) ? intval($_POST['book_id']) : 0;
+        $quantity = isset($_POST['quantity']) ? intval($_POST['quantity']) : 1;
+        $userId = $_SESSION['user_id'];
+
+        // Validate dữ liệu
+        if ($bookId <= 0) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'ID sách không hợp lệ'
+            ]);
+            exit();
+        }
+
+        if ($quantity <= 0) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Số lượng phải lớn hơn 0'
+            ]);
+            exit();
+        }
+
+        // Kiểm tra sách có tồn tại không
+        $book = $db->fetch("SELECT * FROM books WHERE id = :id", ['id' => $bookId]);
+
+        if (!$book) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Sách không tồn tại'
+            ]);
+            exit();
+        }
+
+        // Kiểm tra tồn kho
+        if ($book['stock'] <= 0) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Sách đã hết hàng'
+            ]);
+            exit();
+        }
+
+        // Kiểm tra số lượng có vượt quá tồn kho không
+        $currentCartQuantity = 0;
+        $existingCartItem = $db->fetch(
+            "SELECT quantity FROM cart WHERE user_id = :user_id AND id = :book_id",
+            ['user_id' => $userId, 'book_id' => $bookId]
+        );
+
+        if ($existingCartItem) {
+            $currentCartQuantity = $existingCartItem['quantity'];
+        }
+
+        $totalRequestedQuantity = $currentCartQuantity + $quantity;
+
+        if ($totalRequestedQuantity > $book['stock']) {
+            $availableQuantity = $book['stock'] - $currentCartQuantity;
+
+            if ($availableQuantity <= 0) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Bạn đã thêm tối đa số lượng có thể cho sách này'
+                ]);
+            } else {
+                echo json_encode([
+                    'success' => false,
+                    'message' => "Chỉ có thể thêm tối đa {$availableQuantity} cuốn nữa vào giỏ hàng"
+                ]);
+            }
+            exit();
+        }
+
+        // Thêm vào giỏ hàng
+        $result = $db->addToCart($userId, $bookId, $quantity);
+
+
+        if ($result == 0 || $result) {
+            // Lấy thông tin giỏ hàng cập nhật
+            $cartCount = $db->getCartItemCount($userId);
+            $cartTotal = $db->getCartTotal($userId);
+
+            echo json_encode([
+                'success' => true,
+                'message' => 'Đã thêm sách vào giỏ hàng thành công!',
+                'data' => [
+                    'cart_count' => $cartCount,
+                    'cart_total' => number_format($cartTotal * 1000, 0, ',', '.') . ' VNĐ',
+                    'book_title' => $book['title'],
+                    'quantity_added' => $quantity
+                ]
+            ]);
+        } else {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Có lỗi xảy ra khi thêm vào giỏ hàng'
+            ]);
+        }
+
+    } catch (Exception $e) {
+        error_log('Add to cart error: ' . $e->getMessage());
+        echo json_encode([
+            'success' => false,
+            'message' => 'Có lỗi hệ thống xảy ra: ' . $e->getMessage()
+        ]);
+    }
+    exit();
+}
+
+// Xử lý AJAX request cho lấy số lượng giỏ hàng
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'get_cart_count') {
+    header('Content-Type: application/json');
+
+    try {
+        if (!isset($_SESSION['user_id'])) {
+            echo json_encode([
+                'success' => false,
+                'count' => 0,
+                'message' => 'Chưa đăng nhập'
+            ]);
+            exit();
+        }
+
+        $userId = $_SESSION['user_id'];
+        $count = $db->getCartItemCount($userId);
+        $total = $db->getCartTotal($userId);
+
+        echo json_encode([
+            'success' => true,
+            'count' => $count,
+            'total' => $total,
+            'formatted_total' => number_format($total * 1000, 0, ',', '.') . ' VNĐ'
+        ]);
+
+    } catch (Exception $e) {
+        error_log('Get cart count error: ' . $e->getMessage());
+        echo json_encode([
+            'success' => false,
+            'count' => 0,
+            'message' => 'Có lỗi xảy ra'
+        ]);
+    }
+    exit();
+}
 
 // Lấy ID sách từ URL
 $bookId = isset($_GET['id']) ? (int) $_GET['id'] : 0;
@@ -139,9 +297,6 @@ $relatedBooks = $db->fetchAll(
                                 onclick="addToCart(<?php echo $book['id']; ?>)">
                                 <i class="fas fa-shopping-cart"></i> Thêm vào giỏ hàng
                             </button>
-                            <button type="button" class="btn btn-buy-now" onclick="buyNow(<?php echo $book['id']; ?>)">
-                                <i class="fas fa-bolt"></i> Mua ngay
-                            </button>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -251,41 +406,59 @@ $relatedBooks = $db->fetchAll(
 
         // Thêm vào giỏ hàng
         function addToCart(bookId) {
-            const quantity = document.getElementById('quantity').value;
+            const quantity = parseInt(document.getElementById('quantity').value);
+            const addToCartBtn = document.querySelector('.btn-add-to-cart');
 
-            // Gửi AJAX request để thêm vào giỏ hàng
-            fetch('../../controller/cart/add_to_cart.php', {
+            // Disable button và hiển thị loading
+            addToCartBtn.disabled = true;
+            const originalText = addToCartBtn.innerHTML;
+            addToCartBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang thêm...';
+
+            // Gửi AJAX request đến add_to_cart.php
+            fetch('/DoAn_BookStore/view/cart/add_to_cart.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
                     book_id: bookId,
-                    quantity: parseInt(quantity)
+                    quantity: quantity
                 })
             })
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        alert('Đã thêm sách vào giỏ hàng!');
-                        // Cập nhật số lượng giỏ hàng trên header nếu có
+                        // Hiển thị thông báo thành công
+                        showNotification('success', data.message);
+
+                        // Cập nhật số lượng giỏ hàng trên header
                         updateCartCount();
+
+                        // Hiển thị thông tin chi tiết
+                        if (data.data) {
+                            console.log('Đã thêm:', data.data.quantity_added, 'cuốn', data.data.book_title);
+                        }
                     } else {
-                        alert('Có lỗi xảy ra: ' + data.message);
+                        // Hiển thị lỗi
+                        showNotification('error', data.message);
+
+                        // Nếu cần đăng nhập, chuyển hướng
+                        if (data.redirect) {
+                            setTimeout(() => {
+                                window.location.href = data.redirect;
+                            }, 2000);
+                        }
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    alert('Có lỗi xảy ra khi thêm vào giỏ hàng');
+                    showNotification('error', 'Có lỗi xảy ra khi thêm vào giỏ hàng');
+                })
+                .finally(() => {
+                    // Khôi phục button
+                    addToCartBtn.disabled = false;
+                    addToCartBtn.innerHTML = originalText;
                 });
-        }
-
-        // Mua ngay
-        function buyNow(bookId) {
-            const quantity = document.getElementById('quantity').value;
-
-            // Chuyển hướng đến trang thanh toán với thông tin sách
-            window.location.href = `../checkout/index.php?book_id=${bookId}&quantity=${quantity}&type=buy_now`;
         }
 
         // Cập nhật số lượng giỏ hàng
@@ -293,14 +466,58 @@ $relatedBooks = $db->fetchAll(
             fetch('../../controller/cart/get_cart_count.php')
                 .then(response => response.json())
                 .then(data => {
-                    const cartCountElement = document.querySelector('.cart-count');
-                    if (cartCountElement) {
-                        cartCountElement.textContent = data.count;
+                    if (data.success) {
+                        // Cập nhật số lượng trên header
+                        const cartCountElements = document.querySelectorAll('.cart-count');
+                        cartCountElements.forEach(element => {
+                            element.textContent = data.count;
+                        });
+
+                        // Cập nhật tổng tiền nếu có element
+                        const cartTotalElements = document.querySelectorAll('.cart-total');
+                        cartTotalElements.forEach(element => {
+                            element.textContent = data.formatted_total;
+                        });
+
+                        // Cập nhật badge số lượng giỏ hàng
+                        const cartBadges = document.querySelectorAll('.cart-badge');
+                        cartBadges.forEach(badge => {
+                            if (data.count > 0) {
+                                badge.textContent = data.count;
+                                badge.style.display = 'inline';
+                            } else {
+                                badge.style.display = 'none';
+                            }
+                        });
                     }
                 })
                 .catch(error => {
                     console.error('Error updating cart count:', error);
                 });
+        }
+
+        // Hiển thị thông báo
+        function showNotification(type, message) {
+            // Tạo element thông báo
+            const notification = document.createElement('div');
+            notification.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show position-fixed`;
+            notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px; max-width: 400px;';
+
+            notification.innerHTML = `
+                <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+
+            document.body.appendChild(notification);
+
+            // Tự động ẩn sau 5 giây
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    const bsAlert = new bootstrap.Alert(notification);
+                    bsAlert.close();
+                }
+            }, 5000);
         }
 
         // Validate số lượng khi thay đổi
@@ -310,17 +527,20 @@ $relatedBooks = $db->fetchAll(
 
             if (value < 1) {
                 this.value = 1;
+                showNotification('error', 'Số lượng tối thiểu là 1');
             } else if (value > max) {
                 this.value = max;
-                alert(`Số lượng tối đa là ${max} cuốn`);
+                showNotification('error', `Số lượng tối đa là ${max} cuốn`);
             }
         });
 
         // Enhanced image loading for related books
         document.addEventListener('DOMContentLoaded', function () {
+            // Load cart count when page loads
+            updateCartCount();
+
             const relatedImages = document.querySelectorAll('.related-book-image');
             relatedImages.forEach(img => {
-
                 img.addEventListener('load', function () {
                     this.style.opacity = '1';
                 });
@@ -335,7 +555,86 @@ $relatedBooks = $db->fetchAll(
                 });
             });
         });
+
+        // Xử lý phím Enter trong input số lượng
+        document.getElementById('quantity').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const bookId = <?php echo $book['id']; ?>;
+                addToCart(bookId);
+            }
+        });
+
+        // Xử lý double click để tránh spam
+        let isProcessing = false;
+        document.querySelector('.btn-add-to-cart').addEventListener('click', function (e) {
+            if (isProcessing) {
+                e.preventDefault();
+                return false;
+            }
+            isProcessing = true;
+            setTimeout(() => {
+                isProcessing = false;
+            }, 2000);
+        });
     </script>
+
+    <style>
+        /* Notification styles */
+        .alert {
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            animation: slideInRight 0.3s ease-out;
+        }
+
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        /* Button loading state */
+        .btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        /* Loading spinner */
+        .fa-spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Add to cart button hover effect */
+        .btn-add-to-cart:hover:not(:disabled) {
+            background-color: #218838;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            transition: all 0.2s ease;
+        }
+
+        .btn-buy-now:hover:not(:disabled) {
+            background-color: #e0a800;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            transition: all 0.2s ease;
+        }
+    </style>
 </body>
 
 </html>

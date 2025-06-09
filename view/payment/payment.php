@@ -21,7 +21,6 @@ $checkoutData = $_SESSION['checkout_data'];
 
 // Get user information
 $user = $database->getUserById($userId);
-var_dump($user);
 
 // Handle form submission
 $message = '';

@@ -1399,7 +1399,7 @@ class Database
     /**
      * Get all orders with pagination and filtering
      */
-    public function getAllOrders($page = 1, $perPage = 15, $filters = [])
+    public function getAllOrders($filters = [])
     {
         try {
             $where = '';
@@ -1451,46 +1451,17 @@ class Database
                 $where = 'WHERE ' . implode(' AND ', $conditions);
             }
 
-            $offset = ($page - 1) * $perPage;
             $orderBy = $filters['order_by'] ?? 'created_at DESC';
 
-            $sql = "SELECT * FROM orders {$where} ORDER BY {$orderBy} LIMIT :limit OFFSET :offset";
-            $parameters['limit'] = $perPage;
-            $parameters['offset'] = $offset;
+            $sql = "SELECT * FROM orders {$where} ORDER BY {$orderBy}";
 
             $orders = $this->fetchAll($sql, $parameters);
 
-            // Get total count for pagination
-            $countSql = "SELECT COUNT(*) as count FROM orders {$where}";
-            $countParameters = array_diff_key($parameters, ['limit' => '', 'offset' => '']);
-            $totalOrders = $this->fetch($countSql, $countParameters)['count'];
-            $totalPages = ceil($totalOrders / $perPage);
-
-            return [
-                'orders' => $orders,
-                'pagination' => [
-                    'current_page' => $page,
-                    'per_page' => $perPage,
-                    'total_records' => $totalOrders,
-                    'total_pages' => $totalPages,
-                    'has_previous' => $page > 1,
-                    'has_next' => $page < $totalPages
-                ]
-            ];
+            return $orders ?: [];
 
         } catch (Exception $exception) {
             error_log('Get all orders error: ' . $exception->getMessage());
-            return [
-                'orders' => [],
-                'pagination' => [
-                    'current_page' => 1,
-                    'per_page' => $perPage,
-                    'total_records' => 0,
-                    'total_pages' => 0,
-                    'has_previous' => false,
-                    'has_next' => false
-                ]
-            ];
+            return [];
         }
     }
 
@@ -2245,6 +2216,133 @@ class Database
         }
     }
 
+    /**
+     * Update voucher information
+     */
+    public function updateVoucher($voucherId, $voucherData)
+    {
+        try {
+            if (!is_numeric($voucherId) || $voucherId <= 0) {
+                throw new InvalidArgumentException('Voucher ID must be a positive integer');
+            }
+
+            // Validate and clean data
+            $allowedFields = [
+                'code',
+                'name',
+                'description',
+                'min_order_amount',
+                'discount_percent',
+                'quantity',
+                'is_active',
+                'expires_at'
+            ];
+            $cleanData = [];
+
+            foreach ($voucherData as $field => $value) {
+                if (in_array($field, $allowedFields)) {
+                    switch ($field) {
+                        case 'min_order_amount':
+                        case 'discount_percent':
+                            if ($value !== null && !is_numeric($value)) {
+                                throw new Exception("{$field} must be numeric or null");
+                            }
+                            $cleanData[$field] = $value !== null ? (float) $value : null;
+                            break;
+                        case 'quantity':
+                            if (!is_numeric($value) || $value < 0) {
+                                throw new Exception("quantity must be a non-negative number");
+                            }
+                            $cleanData[$field] = (int) $value;
+                            break;
+                        case 'is_active':
+                            // Handle boolean or string values
+                            if (is_bool($value)) {
+                                $cleanData[$field] = $value ? 1 : 0;
+                            } elseif (in_array($value, [0, 1, '0', '1', 'true', 'false'])) {
+                                $cleanData[$field] = in_array($value, [1, '1', 'true']) ? 1 : 0;
+                            } else {
+                                throw new Exception("is_active must be boolean or 0/1");
+                            }
+                            break;
+                        case 'expires_at':
+                            if ($value !== null) {
+                                // Validate date format
+                                $date = DateTime::createFromFormat('Y-m-d H:i:s', $value);
+                                if (!$date || $date->format('Y-m-d H:i:s') !== $value) {
+                                    // Try alternative format Y-m-d
+                                    $date = DateTime::createFromFormat('Y-m-d', $value);
+                                    if ($date) {
+                                        $cleanData[$field] = $date->format('Y-m-d 23:59:59');
+                                    } else {
+                                        throw new Exception("expires_at must be in Y-m-d H:i:s or Y-m-d format");
+                                    }
+                                } else {
+                                    $cleanData[$field] = $value;
+                                }
+                            } else {
+                                $cleanData[$field] = null;
+                            }
+                            break;
+                        case 'code':
+                        case 'name':
+                        case 'description':
+                            $cleanData[$field] = $value !== null ? trim($value) : null;
+                            break;
+                    }
+                }
+            }
+
+            if (empty($cleanData)) {
+                throw new Exception("No valid fields to update");
+            }
+
+            // Check if code is being updated and if it already exists
+            if (isset($cleanData['code'])) {
+                $existingVoucher = $this->fetch(
+                    "SELECT voucher_id FROM vouchers WHERE code = :code AND voucher_id != :voucher_id LIMIT 1",
+                    ['code' => $cleanData['code'], 'voucher_id' => $voucherId]
+                );
+
+                if ($existingVoucher) {
+                    throw new Exception("Mã voucher '{$cleanData['code']}' đã tồn tại");
+                }
+            }
+
+            // Validate business rules
+            if (isset($cleanData['discount_percent'])) {
+                if ($cleanData['discount_percent'] < 0 || $cleanData['discount_percent'] > 100) {
+                    throw new Exception("Phần trăm giảm giá phải từ 0 đến 100");
+                }
+            }
+
+            if (isset($cleanData['min_order_amount']) && $cleanData['min_order_amount'] < 0) {
+                throw new Exception("Số tiền đơn hàng tối thiểu không được âm");
+            }
+
+            if (isset($cleanData['expires_at']) && $cleanData['expires_at']) {
+                $expiryDate = new DateTime($cleanData['expires_at']);
+                $now = new DateTime();
+                if ($expiryDate <= $now) {
+                    throw new Exception("Ngày hết hạn phải lớn hơn thời gian hiện tại");
+                }
+            }
+
+            // Update voucher
+            $result = $this->update(
+                'vouchers',
+                $cleanData,
+                'voucher_id = :voucher_id',
+                ['voucher_id' => (int) $voucherId]
+            );
+
+            return $result;
+
+        } catch (Exception $e) {
+            error_log('Update voucher error: ' . $e->getMessage());
+            throw $e; // Re-throw để admin.php có thể catch và hiển thị lỗi
+        }
+    }
 
 
 }

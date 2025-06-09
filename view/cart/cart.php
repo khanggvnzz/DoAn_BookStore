@@ -1,5 +1,4 @@
 <?php
-
 session_start();
 
 // Check if user is logged in
@@ -31,149 +30,126 @@ if (!isset($_SESSION['applied_voucher'])) {
     $_SESSION['applied_voucher'] = null;
 }
 
-// Handle AJAX requests
+// Handle form submissions (POST and AJAX)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    header('Content-Type: application/json');
+    // Set JSON header for AJAX responses
+    if (in_array($_POST['action'], ['prepare_checkout'])) {
+        header('Content-Type: application/json');
+    }
 
     switch ($_POST['action']) {
-        case 'apply_voucher':
-            $voucherCode = strtoupper(trim($_POST['voucher_code'] ?? ''));
+        case 'remove_item':
+            $cartId = isset($_POST['cart_id']) ? intval($_POST['cart_id']) : 0;
 
-            if (empty($voucherCode)) {
-                echo json_encode(['success' => false, 'message' => 'Vui lòng chọn mã voucher']);
-                exit();
+            if ($cartId > 0) {
+                $result = $database->removeFromCart($cartId);
+
+                if ($result) {
+                    $message = 'Đã xóa sản phẩm khỏi giỏ hàng thành công!';
+                    $messageType = 'success';
+
+                    // Revalidate voucher after removing item
+                    if ($_SESSION['applied_voucher']) {
+                        $cartSummary = $database->getCartSummary($userId);
+                        $validation = validateVoucher($database, $_SESSION['applied_voucher']['code'], $cartSummary['total_amount'], $userId);
+
+                        if (!$validation['valid']) {
+                            $_SESSION['applied_voucher'] = null;
+                            $message .= ' Voucher đã được gỡ bỏ do không còn phù hợp.';
+                        }
+                    }
+                } else {
+                    $message = 'Không thể xóa sản phẩm. Vui lòng thử lại.';
+                    $messageType = 'danger';
+                }
             }
 
-            // Get current cart total
-            $cartSummary = $database->getCartSummary($userId);
-            $orderAmount = $cartSummary['total_amount'];
-
-            $validation = validateVoucher($database, $voucherCode, $orderAmount, $userId);
-
-            if ($validation['valid']) {
-                $_SESSION['applied_voucher'] = [
-                    'code' => $voucherCode,
-                    'name' => $validation['voucher']['name'],
-                    'discount_percent' => $validation['voucher']['discount_percent'],
-                    'discount_amount' => $validation['discount_amount'],
-                    'voucher_id' => $validation['voucher']['voucher_id']
-                ];
-
-                $finalTotal = $orderAmount - $validation['discount_amount'];
-
-                echo json_encode([
-                    'success' => true,
-                    'message' => 'Áp dụng voucher thành công!',
-                    'voucher_name' => $validation['voucher']['name'],
-                    'discount_percent' => $validation['voucher']['discount_percent'],
-                    'discount_amount' => number_format($validation['discount_amount'] * 1000, 0, ',', '.'),
-                    'final_total' => number_format($finalTotal * 1000, 0, ',', '.')
-                ]);
-            } else {
-                echo json_encode(['success' => false, 'message' => $validation['message']]);
-            }
-            exit();
-
-        case 'remove_voucher':
-            $_SESSION['applied_voucher'] = null;
-
-            $cartSummary = $database->getCartSummary($userId);
-            echo json_encode([
-                'success' => true,
-                'message' => 'Đã bỏ voucher',
-                'final_total' => number_format($cartSummary['total_amount'] * 1000, 0, ',', '.')
-            ]);
+            header('Location: ' . $_SERVER['PHP_SELF'] . ($message ? '?msg=' . urlencode($message) . '&type=' . $messageType : ''));
             exit();
 
         case 'update_quantity':
-            $cartId = $_POST['cart_id'] ?? 0;
+            $cartId = isset($_POST['cart_id']) ? intval($_POST['cart_id']) : 0;
             $quantity = max(1, intval($_POST['quantity'] ?? 1));
 
-            $result = $database->updateCartQuantity($cartId, $quantity);
-            if ($result) {
-                $cartSummary = $database->getCartSummary($userId);
+            if ($cartId > 0) {
+                $result = $database->updateCartQuantity($cartId, $quantity);
 
-                // Recalculate voucher discount if applied
-                $discountAmount = 0;
-                $finalTotal = $cartSummary['total_amount'];
+                if ($result) {
+                    $message = 'Cập nhật số lượng thành công!';
+                    $messageType = 'success';
 
-                if ($_SESSION['applied_voucher']) {
-                    $validation = validateVoucher($database, $_SESSION['applied_voucher']['code'], $cartSummary['total_amount'], $userId);
-                    if ($validation['valid']) {
-                        $discountAmount = $validation['discount_amount'];
-                        $finalTotal = $cartSummary['total_amount'] - $discountAmount;
+                    // Revalidate voucher after quantity change
+                    if ($_SESSION['applied_voucher']) {
+                        $cartSummary = $database->getCartSummary($userId);
+                        $validation = validateVoucher($database, $_SESSION['applied_voucher']['code'], $cartSummary['total_amount'], $userId);
 
-                        // Update session voucher data
-                        $_SESSION['applied_voucher']['discount_amount'] = $discountAmount;
-                    } else {
-                        $_SESSION['applied_voucher'] = null; // Remove invalid voucher
+                        if (!$validation['valid']) {
+                            $_SESSION['applied_voucher'] = null;
+                            $message .= ' Voucher đã được gỡ bỏ do không còn phù hợp.';
+                        }
                     }
+                } else {
+                    $message = 'Không thể cập nhật số lượng. Vui lòng thử lại.';
+                    $messageType = 'danger';
                 }
-
-                echo json_encode([
-                    'success' => true,
-                    'message' => 'Cập nhật số lượng thành công',
-                    'total_amount' => number_format($cartSummary['total_amount'] * 1000, 0, ',', '.'),
-                    'total_items' => $cartSummary['total_items'],
-                    'discount_amount' => number_format($discountAmount * 1000, 0, ',', '.'),
-                    'final_total' => number_format($finalTotal * 1000, 0, ',', '.'),
-                    'voucher_valid' => $_SESSION['applied_voucher'] !== null
-                ]);
-            } else {
-                echo json_encode(['success' => false, 'message' => 'Không thể cập nhật số lượng']);
             }
-            exit();
 
-        case 'remove_item':
-            $cartId = $_POST['cart_id'] ?? 0;
-
-            $result = $database->removeFromCart($cartId);
-            if ($result) {
-                $cartSummary = $database->getCartSummary($userId);
-
-                // Recalculate voucher discount if applied
-                $discountAmount = 0;
-                $finalTotal = $cartSummary['total_amount'];
-
-                if ($_SESSION['applied_voucher']) {
-                    $validation = validateVoucher($database, $_SESSION['applied_voucher']['code'], $cartSummary['total_amount'], $userId);
-                    if ($validation['valid']) {
-                        $discountAmount = $validation['discount_amount'];
-                        $finalTotal = $cartSummary['total_amount'] - $discountAmount;
-
-                        // Update session voucher data
-                        $_SESSION['applied_voucher']['discount_amount'] = $discountAmount;
-                    } else {
-                        $_SESSION['applied_voucher'] = null; // Remove invalid voucher
-                    }
-                }
-
-                echo json_encode([
-                    'success' => true,
-                    'message' => 'Đã xóa sản phẩm khỏi giỏ hàng',
-                    'total_amount' => number_format($cartSummary['total_amount'] * 1000, 0, ',', '.'),
-                    'total_items' => $cartSummary['total_items'],
-                    'item_count' => $cartSummary['item_count'],
-                    'discount_amount' => number_format($discountAmount * 1000, 0, ',', '.'),
-                    'final_total' => number_format($finalTotal * 1000, 0, ',', '.'),
-                    'voucher_valid' => $_SESSION['applied_voucher'] !== null
-                ]);
-            } else {
-                echo json_encode(['success' => false, 'message' => 'Không thể xóa sản phẩm']);
-            }
+            header('Location: ' . $_SERVER['PHP_SELF'] . ($message ? '?msg=' . urlencode($message) . '&type=' . $messageType : ''));
             exit();
 
         case 'clear_cart':
             $result = $database->clearCart($userId);
+
             if ($result) {
-                $_SESSION['applied_voucher'] = null; // Clear voucher when cart is cleared
-                echo json_encode([
-                    'success' => true,
-                    'message' => 'Đã xóa tất cả sản phẩm khỏi giỏ hàng'
-                ]);
+                $_SESSION['applied_voucher'] = null;
+                $message = 'Đã xóa tất cả sản phẩm khỏi giỏ hàng!';
+                $messageType = 'success';
             } else {
-                echo json_encode(['success' => false, 'message' => 'Không thể xóa giỏ hàng']);
+                $message = 'Không thể xóa giỏ hàng. Vui lòng thử lại.';
+                $messageType = 'danger';
             }
+
+            header('Location: ' . $_SERVER['PHP_SELF'] . ($message ? '?msg=' . urlencode($message) . '&type=' . $messageType : ''));
+            exit();
+
+        case 'apply_voucher':
+            $voucherCode = strtoupper(trim($_POST['voucher_code'] ?? ''));
+
+            if (!empty($voucherCode)) {
+                $cartSummary = $database->getCartSummary($userId);
+                $orderAmount = $cartSummary['total_amount'];
+
+                $validation = validateVoucher($database, $voucherCode, $orderAmount, $userId);
+
+                if ($validation['valid']) {
+                    $_SESSION['applied_voucher'] = [
+                        'code' => $voucherCode,
+                        'name' => $validation['voucher']['name'],
+                        'discount_percent' => $validation['voucher']['discount_percent'],
+                        'discount_amount' => $validation['discount_amount'],
+                        'voucher_id' => $validation['voucher']['voucher_id']
+                    ];
+
+                    $message = 'Áp dụng voucher thành công!';
+                    $messageType = 'success';
+                } else {
+                    $message = $validation['message'];
+                    $messageType = 'danger';
+                }
+            } else {
+                $message = 'Vui lòng chọn mã voucher!';
+                $messageType = 'warning';
+            }
+
+            header('Location: ' . $_SERVER['PHP_SELF'] . ($message ? '?msg=' . urlencode($message) . '&type=' . $messageType : ''));
+            exit();
+
+        case 'remove_voucher':
+            $_SESSION['applied_voucher'] = null;
+            $message = 'Đã bỏ mã voucher!';
+            $messageType = 'info';
+
+            header('Location: ' . $_SERVER['PHP_SELF'] . ($message ? '?msg=' . urlencode($message) . '&type=' . $messageType : ''));
             exit();
 
         case 'prepare_checkout':
@@ -208,7 +184,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $_SESSION['checkout_data']['discount_amount'] = $validation['discount_amount'];
                     $_SESSION['checkout_data']['final_total'] = $cartSummary['total_amount'] - $validation['discount_amount'];
                 } else {
-                    $_SESSION['applied_voucher'] = null; // Remove invalid voucher
+                    $_SESSION['applied_voucher'] = null;
                     $_SESSION['checkout_data']['applied_voucher'] = null;
                 }
             }
@@ -216,6 +192,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             echo json_encode(['success' => true, 'message' => 'Chuẩn bị thanh toán thành công']);
             exit();
     }
+}
+
+// Get message from URL parameters (after redirect)
+if (isset($_GET['msg']) && isset($_GET['type'])) {
+    $message = $_GET['msg'];
+    $messageType = $_GET['type'];
 }
 
 // Get cart data
@@ -235,7 +217,7 @@ if ($appliedVoucher) {
         $discountAmount = $validation['discount_amount'];
         $finalTotal = $totalAmount - $discountAmount;
     } else {
-        $_SESSION['applied_voucher'] = null; // Remove invalid voucher
+        $_SESSION['applied_voucher'] = null;
         $appliedVoucher = null;
     }
 }
@@ -307,14 +289,6 @@ $validation = $database->validateCartItems($userId);
             padding: 8px;
         }
 
-        #voucherDetails {
-            transition: all 0.3s ease;
-        }
-
-        #voucherDetails .alert {
-            font-size: 0.85rem;
-        }
-
         .applied-voucher {
             transition: all 0.3s ease;
         }
@@ -323,6 +297,14 @@ $validation = $database->validateCartItems($userId);
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             border-radius: 8px;
             overflow: hidden;
+        }
+
+        .btn-action {
+            transition: all 0.2s ease;
+        }
+
+        .btn-action:hover {
+            transform: translateY(-1px);
         }
     </style>
 </head>
@@ -345,7 +327,16 @@ $validation = $database->validateCartItems($userId);
         </div>
 
         <!-- Alert Messages -->
-        <div id="alertContainer"></div>
+        <div id="alertContainer">
+            <?php if ($message): ?>
+                <div class="alert alert-<?php echo $messageType; ?> alert-dismissible fade show" role="alert">
+                    <i
+                        class="fas fa-<?php echo $messageType === 'success' ? 'check-circle' : ($messageType === 'danger' ? 'exclamation-circle' : 'info-circle'); ?>"></i>
+                    <?php echo htmlspecialchars($message); ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            <?php endif; ?>
+        </div>
 
         <?php if (!$validation['valid']): ?>
             <div class="alert alert-warning">
@@ -374,9 +365,9 @@ $validation = $database->validateCartItems($userId);
                 <div class="col-lg-8">
                     <div class="cart-items">
                         <?php foreach ($cartItems as $item): ?>
-                            <div class="cart-item" data-cart-id="<?php echo $item['cart_id']; ?>">
+                            <div class="cart-item">
                                 <div class="row align-items-center">
-                                    <div class="col-md-2 text-center">
+                                    <div class="col-md-2">
                                         <img src="/DoAn_BookStore/images/books/<?php echo htmlspecialchars($item['image']); ?>"
                                             alt="<?php echo htmlspecialchars($item['title']); ?>" class="book-image">
                                     </div>
@@ -394,25 +385,25 @@ $validation = $database->validateCartItems($userId);
                                         <?php if ($item['quantity'] > $item['stock']): ?>
                                             <small class="stock-warning">
                                                 <i class="fas fa-exclamation-triangle"></i>
-                                                Chỉ còn <?php echo $item['stock_quantity']; ?> cuốn
+                                                Chỉ còn <?php echo $item['stock']; ?> cuốn
                                             </small>
                                         <?php endif; ?>
                                     </div>
                                     <div class="col-md-3">
-                                        <div class="d-flex align-items-center justify-content-center">
-                                            <button class="btn btn-outline-secondary btn-sm me-2 quantity-btn"
-                                                data-action="decrease" data-cart-id="<?php echo $item['cart_id']; ?>">
+                                        <form method="POST" class="d-flex align-items-center justify-content-center">
+                                            <input type="hidden" name="action" value="update_quantity">
+                                            <input type="hidden" name="cart_id" value="<?php echo $item['cart_id']; ?>">
+                                            <button type="submit" name="quantity"
+                                                value="<?php echo max(1, $item['quantity'] - 1); ?>"
+                                                class="btn btn-outline-secondary btn-sm me-2 btn-action" <?php echo $item['quantity'] <= 1 ? 'disabled' : ''; ?>>
                                                 <i class="fas fa-minus"></i>
                                             </button>
-                                            <input type="number" class="form-control quantity-input"
-                                                value="<?php echo $item['quantity']; ?>" min="1"
-                                                max="<?php echo $item['stock']; ?>"
-                                                data-cart-id="<?php echo $item['cart_id']; ?>">
-                                            <button class="btn btn-outline-secondary btn-sm ms-2 quantity-btn"
-                                                data-action="increase" data-cart-id="<?php echo $item['cart_id']; ?>">
+                                            <span class="fw-bold mx-2"><?php echo $item['quantity']; ?></span>
+                                            <button type="submit" name="quantity" value="<?php echo $item['quantity'] + 1; ?>"
+                                                class="btn btn-outline-secondary btn-sm ms-2 btn-action" <?php echo $item['quantity'] >= $item['stock'] ? 'disabled' : ''; ?>>
                                                 <i class="fas fa-plus"></i>
                                             </button>
-                                        </div>
+                                        </form>
                                     </div>
                                     <div class="col-md-2 text-center">
                                         <strong class="item-total">
@@ -423,10 +414,15 @@ $validation = $database->validateCartItems($userId);
                                         </strong>
                                     </div>
                                     <div class="col-md-1 text-center">
-                                        <button class="btn btn-outline-danger btn-sm remove-item"
-                                            data-cart-id="<?php echo $item['cart_id']; ?>" title="Xóa sản phẩm">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
+                                        <form method="POST" class="d-inline">
+                                            <input type="hidden" name="action" value="remove_item">
+                                            <input type="hidden" name="cart_id" value="<?php echo $item['cart_id']; ?>">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm btn-action"
+                                                onclick="return confirm('Bạn có chắc muốn xóa sản phẩm này?')"
+                                                title="Xóa sản phẩm">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
                                     </div>
                                 </div>
                             </div>
@@ -435,12 +431,16 @@ $validation = $database->validateCartItems($userId);
 
                     <!-- Cart Actions -->
                     <div class="d-flex justify-content-between mt-4">
-                        <a href="/DoAn_BookStore/" class="btn btn-outline-primary">
+                        <a href="/DoAn_BookStore/" class="btn btn-outline-primary btn-action">
                             <i class="fas fa-arrow-left"></i> Tiếp tục mua sắm
                         </a>
-                        <button class="btn btn-outline-danger" id="clearCartBtn">
-                            <i class="fas fa-trash"></i> Xóa tất cả
-                        </button>
+                        <form method="POST" class="d-inline">
+                            <input type="hidden" name="action" value="clear_cart">
+                            <button type="submit" class="btn btn-outline-danger btn-action"
+                                onclick="return confirm('Bạn có chắc muốn xóa tất cả sản phẩm?')">
+                                <i class="fas fa-trash"></i> Xóa tất cả
+                            </button>
+                        </form>
                     </div>
                 </div>
 
@@ -451,12 +451,12 @@ $validation = $database->validateCartItems($userId);
 
                         <div class="d-flex justify-content-between mb-2">
                             <span>Số lượng sản phẩm:</span>
-                            <span id="summary-items"><?php echo $totalItems; ?></span>
+                            <span><?php echo $totalItems; ?></span>
                         </div>
 
                         <div class="d-flex justify-content-between mb-3">
                             <span>Tạm tính:</span>
-                            <span id="summary-subtotal">
+                            <span>
                                 <?php
                                 $displayTotal = $totalAmount * 1000;
                                 echo number_format($displayTotal, 0, ',', '.');
@@ -480,43 +480,37 @@ $validation = $database->validateCartItems($userId);
                                                 <?php echo htmlspecialchars($appliedVoucher['name']); ?>
                                             </small>
                                         </div>
-                                        <button class="btn btn-sm btn-outline-danger" id="removeVoucherBtn">
-                                            <i class="fas fa-times"></i>
-                                        </button>
+                                        <form method="POST" class="d-inline">
+                                            <input type="hidden" name="action" value="remove_voucher">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </form>
                                     </div>
                                 </div>
                             <?php else: ?>
-                                <!-- Voucher Dropdown -->
-                                <div class="voucher-input">
+                                <!-- Voucher Selection -->
+                                <form method="POST">
+                                    <input type="hidden" name="action" value="apply_voucher">
                                     <?php
                                     $availableVouchers = getVouchers($database, $totalAmount);
                                     ?>
 
                                     <?php if (!empty($availableVouchers)): ?>
                                         <div class="input-group">
-                                            <select class="form-select" id="voucherSelect">
+                                            <select class="form-select" name="voucher_code">
                                                 <option value="">Chọn mã giảm giá</option>
                                                 <?php foreach ($availableVouchers as $voucher): ?>
-                                                    <option value="<?php echo $voucher['code']; ?>"
-                                                        data-discount="<?php echo $voucher['discount_percent']; ?>"
-                                                        data-min-amount="<?php echo $voucher['min_order_amount']; ?>"
-                                                        data-name="<?php echo htmlspecialchars($voucher['name']); ?>">
+                                                    <option value="<?php echo $voucher['code']; ?>">
                                                         <?php echo $voucher['code']; ?> -
                                                         <?php echo htmlspecialchars($voucher['name']); ?>
                                                         (Giảm <?php echo $voucher['discount_percent']; ?>%)
                                                     </option>
                                                 <?php endforeach; ?>
                                             </select>
-                                            <button class="btn btn-outline-primary" type="button" id="applyVoucherBtn">
+                                            <button class="btn btn-outline-primary" type="submit">
                                                 <i class="fas fa-tag"></i> Áp dụng
                                             </button>
-                                        </div>
-
-                                        <!-- Show voucher details -->
-                                        <div id="voucherDetails" class="mt-2" style="display: none;">
-                                            <div class="alert alert-info py-2 mb-0">
-                                                <small id="voucherDescription"></small>
-                                            </div>
                                         </div>
                                     <?php else: ?>
                                         <div class="text-muted text-center py-2">
@@ -524,7 +518,7 @@ $validation = $database->validateCartItems($userId);
                                             Không có voucher phù hợp với đơn hàng hiện tại.
                                         </div>
                                     <?php endif; ?>
-                                </div>
+                                </form>
                             <?php endif; ?>
                         </div>
 
@@ -538,7 +532,7 @@ $validation = $database->validateCartItems($userId);
                                 <span>
                                     <i class="fas fa-ticket-alt"></i> Giảm giá:
                                 </span>
-                                <span id="discount-amount">
+                                <span>
                                     -<?php echo number_format($discountAmount * 1000, 0, ',', '.'); ?> VNĐ
                                 </span>
                             </div>
@@ -548,7 +542,7 @@ $validation = $database->validateCartItems($userId);
 
                         <div class="d-flex justify-content-between mb-4">
                             <strong>Tổng cộng:</strong>
-                            <strong class="text-primary" id="summary-total">
+                            <strong class="text-primary">
                                 <?php
                                 $displayFinalTotal = $finalTotal * 1000;
                                 echo number_format($displayFinalTotal, 0, ',', '.');
@@ -556,7 +550,7 @@ $validation = $database->validateCartItems($userId);
                             </strong>
                         </div>
 
-                        <button class="btn btn-primary w-100 mb-3" id="checkoutBtn" <?php echo !$validation['valid'] ? 'disabled' : ''; ?>>
+                        <button class="btn btn-primary w-100 mb-3 btn-action" id="checkoutBtn" <?php echo !$validation['valid'] ? 'disabled' : ''; ?>>
                             <i class="fas fa-credit-card"></i> Thanh toán
                         </button>
 
@@ -572,7 +566,6 @@ $validation = $database->validateCartItems($userId);
         <?php endif; ?>
     </div>
 
-    <!-- JavaScript -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
@@ -581,6 +574,7 @@ $validation = $database->validateCartItems($userId);
                 const alertContainer = document.getElementById('alertContainer');
                 const alertHtml = `
                     <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                        <i class="fas fa-${type === 'success' ? 'check-circle' : (type === 'danger' ? 'exclamation-circle' : 'info-circle')}"></i>
                         ${message}
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
@@ -597,271 +591,13 @@ $validation = $database->validateCartItems($userId);
                 }, 3000);
             }
 
-            // Update summary
-            function updateSummary(data) {
-                document.getElementById('summary-items').textContent = data.total_items;
-                document.getElementById('summary-subtotal').textContent = data.total_amount + ' VNĐ';
-
-                // Update discount and final total
-                const discountElement = document.getElementById('discount-amount');
-                if (data.discount_amount && parseFloat(data.discount_amount.replace(/[^\d]/g, '')) > 0) {
-                    if (discountElement) {
-                        discountElement.textContent = '-' + data.discount_amount + ' VNĐ';
-                    }
-                } else {
-                    if (discountElement && discountElement.parentElement) {
-                        discountElement.parentElement.style.display = 'none';
-                    }
-                }
-
-                document.getElementById('summary-total').textContent = data.final_total + ' VNĐ';
-
-                // Handle voucher validity
-                if (data.voucher_valid === false) {
-                    location.reload(); // Reload to show voucher input again
-                }
-            }
-
-            // Handle voucher selection
-            document.getElementById('voucherSelect')?.addEventListener('change', function () {
-                const selectedOption = this.options[this.selectedIndex];
-                const voucherDetails = document.getElementById('voucherDetails');
-                const voucherDescription = document.getElementById('voucherDescription');
-
-                if (this.value) {
-                    const discount = selectedOption.dataset.discount;
-                    const minAmount = selectedOption.dataset.minAmount;
-                    const voucherName = selectedOption.dataset.name;
-                    const formattedMinAmount = new Intl.NumberFormat('vi-VN').format(minAmount * 1000);
-
-                    voucherDescription.innerHTML = `
-                        <strong>${this.value}</strong><br>
-                        <i class="fas fa-tag"></i> ${voucherName}<br>
-                        <i class="fas fa-percentage"></i> Giảm giá: ${discount}%<br>
-                        <i class="fas fa-shopping-cart"></i> Đơn tối thiểu: ${formattedMinAmount} VNĐ
-                    `;
-                    voucherDetails.style.display = 'block';
-                } else {
-                    voucherDetails.style.display = 'none';
-                }
-            });
-
-            // Apply voucher
-            document.getElementById('applyVoucherBtn')?.addEventListener('click', function () {
-                const voucherSelect = document.getElementById('voucherSelect');
-                const voucherCode = voucherSelect?.value;
-
-                if (!voucherCode) {
-                    showAlert('Vui lòng chọn mã voucher', 'warning');
-                    return;
-                }
-
-                const btn = this;
-                const originalText = btn.innerHTML;
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang xử lý...';
-                btn.disabled = true;
-                voucherSelect.disabled = true;
-
-                fetch(window.location.href, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `action=apply_voucher&voucher_code=${encodeURIComponent(voucherCode)}`
-                })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            showAlert(data.message, 'success');
-                            setTimeout(() => location.reload(), 1000);
-                        } else {
-                            showAlert(data.message, 'danger');
-                            btn.innerHTML = originalText;
-                            btn.disabled = false;
-                            voucherSelect.disabled = false;
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        showAlert('Có lỗi xảy ra', 'danger');
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                        voucherSelect.disabled = false;
-                    });
-            });
-
-            // Remove voucher
-            document.getElementById('removeVoucherBtn')?.addEventListener('click', function () {
-                if (confirm('Bạn có chắc muốn bỏ mã giảm giá?')) {
-                    const btn = this;
-                    btn.disabled = true;
-
-                    fetch(window.location.href, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                        },
-                        body: 'action=remove_voucher'
-                    })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.success) {
-                                showAlert(data.message, 'info');
-                                setTimeout(() => location.reload(), 1000);
-                            } else {
-                                showAlert('Có lỗi xảy ra', 'danger');
-                                btn.disabled = false;
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error:', error);
-                            showAlert('Có lỗi xảy ra', 'danger');
-                            btn.disabled = false;
-                        });
-                }
-            });
-
-            // Quick apply voucher (double click on select)
-            document.getElementById('voucherSelect')?.addEventListener('dblclick', function () {
-                if (this.value) {
-                    document.getElementById('applyVoucherBtn').click();
-                }
-            });
-
-            // Update quantity
-            function updateQuantity(cartId, quantity) {
-                fetch(window.location.href, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `action=update_quantity&cart_id=${cartId}&quantity=${quantity}`
-                })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            // Update summary
-                            updateSummary(data);
-
-                            // Update item total
-                            const cartItem = document.querySelector(`[data-cart-id="${cartId}"]`);
-                            const priceText = cartItem.querySelector('.text-primary').textContent;
-                            const price = parseFloat(priceText.replace(/[^\d]/g, ''));
-                            const itemTotal = cartItem.querySelector('.item-total');
-                            const newTotal = price * quantity;
-                            itemTotal.textContent = new Intl.NumberFormat('vi-VN').format(newTotal) + ' VNĐ';
-
-                            showAlert(data.message);
-
-                            // Check if voucher is still valid after quantity change
-                            if (data.voucher_valid === false) {
-                                showAlert('Voucher không còn phù hợp với đơn hàng hiện tại', 'warning');
-                            }
-                        } else {
-                            showAlert(data.message, 'danger');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        showAlert('Có lỗi xảy ra', 'danger');
-                    });
-            }
-
-            // Remove item
-            document.querySelectorAll('.remove-item').forEach(btn => {
-                btn.addEventListener('click', function () {
-                    if (confirm('Bạn có chắc muốn xóa sản phẩm này?')) {
-                        const cartId = this.dataset.cartId;
-
-                        fetch(window.location.href, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded',
-                            },
-                            body: `action=remove_item&cart_id=${cartId}`
-                        })
-                            .then(response => response.json())
-                            .then(data => {
-                                if (data.success) {
-                                    // Remove item from DOM
-                                    document.querySelector(`[data-cart-id="${cartId}"]`).remove();
-
-                                    // Update summary
-                                    updateSummary(data);
-
-                                    showAlert(data.message);
-
-                                    // Check if cart is empty
-                                    if (data.item_count === 0) {
-                                        location.reload();
-                                    }
-                                } else {
-                                    showAlert(data.message, 'danger');
-                                }
-                            })
-                            .catch(error => {
-                                console.error('Error:', error);
-                                showAlert('Có lỗi xảy ra', 'danger');
-                            });
-                    }
-                });
-            });
-
-            // Quantity buttons
-            document.querySelectorAll('.quantity-btn').forEach(btn => {
-                btn.addEventListener('click', function () {
-                    const cartId = this.dataset.cartId;
-                    const action = this.dataset.action;
-                    const input = document.querySelector(`input[data-cart-id="${cartId}"]`);
-                    let quantity = parseInt(input.value);
-
-                    if (action === 'increase') {
-                        quantity++;
-                    } else if (action === 'decrease' && quantity > 1) {
-                        quantity--;
-                    }
-
-                    input.value = quantity;
-                    updateQuantity(cartId, quantity);
-                });
-            });
-
-            // Quantity input change
-            document.querySelectorAll('.quantity-input').forEach(input => {
-                input.addEventListener('change', function () {
-                    const cartId = this.dataset.cartId;
-                    const quantity = Math.max(1, parseInt(this.value) || 1);
-                    this.value = quantity;
-                    updateQuantity(cartId, quantity);
-                });
-            });
-
-            // Clear cart
-            document.getElementById('clearCartBtn')?.addEventListener('click', function () {
-                if (confirm('Bạn có chắc muốn xóa tất cả sản phẩm trong giỏ hàng?')) {
-                    fetch(window.location.href, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                        },
-                        body: 'action=clear_cart'
-                    })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.success) {
-                                showAlert(data.message);
-                                setTimeout(() => {
-                                    location.reload();
-                                }, 1000);
-                            } else {
-                                showAlert(data.message, 'danger');
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error:', error);
-                            showAlert('Có lỗi xảy ra', 'danger');
-                        });
-                }
+            // Auto hide existing alerts after 5 seconds
+            const alerts = document.querySelectorAll('.alert');
+            alerts.forEach(function (alert) {
+                setTimeout(function () {
+                    const bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                }, 5000);
             });
 
             // Checkout button
@@ -871,12 +607,6 @@ $validation = $database->validateCartItems($userId);
                     return;
                 }
 
-                // Prepare checkout data
-                const checkoutData = {
-                    action: 'prepare_checkout'
-                };
-
-                // Show loading
                 const btn = this;
                 const originalText = btn.innerHTML;
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang xử lý...';
@@ -887,12 +617,11 @@ $validation = $database->validateCartItems($userId);
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',
                     },
-                    body: `action=prepare_checkout`
+                    body: 'action=prepare_checkout'
                 })
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
-                            // Redirect to payment page
                             window.location.href = '/DoAn_BookStore/view/payment/payment.php';
                         } else {
                             showAlert(data.message, 'danger');

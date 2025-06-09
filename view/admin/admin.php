@@ -389,6 +389,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Lỗi khi cập nhật trạng thái voucher: " . $e->getMessage();
             }
             break;
+
+        case 'approve_order':
+            try {
+                $orderId = intval($_POST['order_id']);
+                $result = $database->updateOrderStatus($orderId, 'confirmed');
+                if ($result) {
+                    $message = "Duyệt đơn hàng thành công!";
+                } else {
+                    $error = "Lỗi khi duyệt đơn hàng";
+                }
+            } catch (Exception $e) {
+                $error = "Lỗi khi duyệt đơn hàng: " . $e->getMessage();
+            }
+            break;
+
+        case 'cancel_order':
+            try {
+                $orderId = intval($_POST['order_id']);
+                $result = $database->updateOrderStatus($orderId, 'cancelled');
+                if ($result) {
+                    $message = "Hủy đơn hàng thành công!";
+                } else {
+                    $error = "Lỗi khi hủy đơn hàng";
+                }
+            } catch (Exception $e) {
+                $error = "Lỗi khi hủy đơn hàng: " . $e->getMessage();
+            }
+            break;
+
+        case 'update_order_status':
+            try {
+                $orderId = intval($_POST['order_id']);
+                $newStatus = $_POST['status'];
+
+                // Validate status
+                $validStatuses = ['pending', 'confirmed', 'cancelled'];
+                if (!in_array($newStatus, $validStatuses)) {
+                    $error = "Trạng thái không hợp lệ";
+                    break;
+                }
+
+                $result = $database->updateOrderStatus($orderId, $newStatus);
+                if ($result) {
+                    $message = "Cập nhật trạng thái đơn hàng thành công!";
+                } else {
+                    $error = "Lỗi khi cập nhật trạng thái đơn hàng";
+                }
+            } catch (Exception $e) {
+                $error = "Lỗi khi cập nhật trạng thái: " . $e->getMessage();
+            }
+            break;
     }
 }
 
@@ -404,6 +455,15 @@ $activeBanners = getActiveBanners();
 // Get voucher data from database
 $vouchers = $database->getAllActiveVouchers();
 $allVouchers = $database->fetchAll("SELECT * FROM vouchers ORDER BY created_at DESC");
+
+// Get order data
+$pendingOrders = $database->getOrdersByStatus('pending');
+$confirmedOrders = $database->getOrdersByStatus('confirmed');
+$cancelledOrders = $database->getOrdersByStatus('cancelled');
+$allOrdersData = $database->getAllOrders();
+$allOrders = $allOrdersData;
+$total_orders = $database->count('orders');
+$total_pending = count($pendingOrders['orders']);
 
 // Get statistics
 $total_books = $database->count('books');
@@ -468,6 +528,11 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                         <li class="nav-item">
                             <a class="nav-link" href="#inventory" data-bs-toggle="tab">
                                 <i class="fas fa-warehouse"></i> Kho hàng
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#orders" data-bs-toggle="tab">
+                                <i class="fas fa-shopping-cart"></i> Quản lý Đơn hàng
                             </a>
                         </li>
                         <li class="nav-item mt-3">
@@ -894,8 +959,8 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                                         <tr>
                                                             <td>
                                                                 <code class="bg-success bg-opacity-10 text-success p-1 rounded">
-                                                                                                                                                                                                    <?php echo htmlspecialchars($voucher['code']); ?>
-                                                                                                                                                                                                </code>
+                                                                                                                                                                                                                                                                                                                                                                    <?php echo htmlspecialchars($voucher['code']); ?>
+                                                                                                                                                                                                                                                                                                                                                                </code>
                                                             </td>
                                                             <td><?php echo htmlspecialchars($voucher['name']); ?></td>
                                                             <td>
@@ -1009,8 +1074,8 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                                         <tr>
                                                             <td>
                                                                 <code class="bg-warning bg-opacity-10 text-warning p-1 rounded">
-                                                                                                                                                                                                    <?php echo htmlspecialchars($voucher['code']); ?>
-                                                                                                                                                                                                </code>
+                                                                                                                                                                                                                                                                                                                                                                    <?php echo htmlspecialchars($voucher['code']); ?>
+                                                                                                                                                                                                                                                                                                                                                                </code>
                                                             </td>
                                                             <td><?php echo htmlspecialchars($voucher['name']); ?></td>
                                                             <td>
@@ -1110,8 +1175,8 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                                         <td>
                                                             <code
                                                                 class="<?php echo $voucher['is_active'] ? 'bg-light' : 'bg-warning bg-opacity-10'; ?> p-1 rounded">
-                                                                                                                                <?php echo htmlspecialchars($voucher['code']); ?>
-                                                                                                                            </code>
+                                                                                                                                                                                                                <?php echo htmlspecialchars($voucher['code']); ?>
+                                                                                                                                                                                                            </code>
                                                         </td>
                                                         <td><?php echo htmlspecialchars($voucher['name']); ?></td>
                                                         <td>
@@ -1227,6 +1292,574 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                             </p>
                                             <p><strong>Sách sắp hết:</strong> <?php echo count($low_stock_books); ?></p>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Orders Management Tab -->
+                        <div class="tab-pane fade" id="orders">
+                            <div class="d-flex justify-content-between align-items-center mb-4">
+                                <h2><i class="fas fa-shopping-cart"></i> Quản lý Đơn hàng</h2>
+                                <div class="btn-group">
+                                    <button class="btn btn-outline-primary active" onclick="showOrdersByStatus('all')">
+                                        Tất cả (<?php echo $total_orders; ?>)
+                                    </button>
+                                    <button class="btn btn-outline-warning" onclick="showOrdersByStatus('pending')">
+                                        Chờ duyệt (<?php echo count($pendingOrders['orders']); ?>)
+                                    </button>
+                                    <button class="btn btn-outline-success" onclick="showOrdersByStatus('confirmed')">
+                                        Đã duyệt (<?php echo count($confirmedOrders['orders']); ?>)
+                                    </button>
+                                    <button class="btn btn-outline-danger" onclick="showOrdersByStatus('cancelled')">
+                                        Đã hủy (<?php echo count($cancelledOrders['orders']); ?>)
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- All Orders Section -->
+                            <div id="all-orders" class="order-section">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h5 class="mb-0">
+                                            <i class="fas fa-list"></i> Tất cả đơn hàng
+                                            <span class="badge bg-primary"><?php echo $total_orders; ?></span>
+                                        </h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-striped">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Mã đơn</th>
+                                                        <th>User ID</th>
+                                                        <th>Sản phẩm</th>
+                                                        <th>Tổng tiền</th>
+                                                        <th>Phương thức</th>
+                                                        <th>Voucher</th>
+                                                        <th>Ghi chú</th>
+                                                        <th>Ngày tạo</th>
+                                                        <th>Trạng thái</th>
+                                                        <th>Thao tác</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <?php foreach ($allOrders as $order): ?>
+                                                        <tr
+                                                            class="<?php echo $order['status'] === 'cancelled' ? 'table-danger' : ''; ?>">
+                                                            <td>
+                                                                <code class="p-1 rounded <?php
+                                                                echo $order['status'] === 'pending' ? 'bg-warning bg-opacity-10 text-warning' :
+                                                                    ($order['status'] === 'confirmed' ? 'bg-success bg-opacity-10 text-success' :
+                                                                        'bg-danger bg-opacity-10 text-danger');
+                                                                ?>">
+                                                                                                                                #<?php echo $order['order_id']; ?>
+                                                                                                                            </code>
+                                                            </td>
+                                                            <td>
+                                                                <span class="badge bg-secondary">
+                                                                    <?php echo $order['user_id']; ?>
+                                                                </span>
+                                                                <br>
+                                                                <small class="text-muted">
+                                                                    <?php
+                                                                    $user = $database->getUserById($order['user_id']);
+                                                                    echo $user ? htmlspecialchars($user->username) : 'N/A';
+                                                                    ?>
+                                                                </small>
+                                                            </td>
+                                                            <td>
+                                                                <small class="text-muted">
+                                                                    <?php
+                                                                    $productItems = $database->parseProductString($order['product']);
+                                                                    echo count($productItems) . ' sản phẩm';
+                                                                    ?>
+                                                                </small>
+                                                            </td>
+                                                            <td>
+                                                                <strong><?php echo number_format($order['cost'], 2); ?>
+                                                                    VNĐ</strong>
+                                                            </td>
+                                                            <td>
+                                                                <span class="badge bg-info">
+                                                                    <?php echo ucfirst($order['pay_method']); ?>
+                                                                </span>
+                                                            </td>
+                                                            <td>
+                                                                <?php if ($order['voucher_id']): ?>
+                                                                    <?php
+                                                                    $voucher = $database->getVoucherById($order['voucher_id']);
+                                                                    if ($voucher):
+                                                                        ?>
+                                                                        <span class="badge bg-success"
+                                                                            title="<?php echo htmlspecialchars($voucher['name']); ?>">
+                                                                            <?php echo htmlspecialchars($voucher['code']); ?>
+                                                                        </span>
+                                                                    <?php else: ?>
+                                                                        <span class="badge bg-secondary">Voucher
+                                                                            #<?php echo $order['voucher_id']; ?></span>
+                                                                    <?php endif; ?>
+                                                                <?php else: ?>
+                                                                    <span class="text-muted">-</span>
+                                                                <?php endif; ?>
+                                                            </td>
+                                                            <td>
+                                                                <?php if (!empty($order['note'])): ?>
+                                                                    <span class="text-truncate d-inline-block"
+                                                                        style="max-width: 100px;"
+                                                                        title="<?php echo htmlspecialchars($order['note']); ?>">
+                                                                        <?php echo htmlspecialchars(substr($order['note'], 0, 30)) . (strlen($order['note']) > 30 ? '...' : ''); ?>
+                                                                    </span>
+                                                                <?php else: ?>
+                                                                    <span class="text-muted">-</span>
+                                                                <?php endif; ?>
+                                                            </td>
+                                                            <td>
+                                                                <?php echo date('d/m/Y H:i', strtotime($order['created_at'])); ?>
+                                                            </td>
+                                                            <td>
+                                                                <?php
+                                                                $statusText = '';
+                                                                $statusClass = '';
+                                                                switch ($order['status']) {
+                                                                    case 'pending':
+                                                                        $statusText = 'Chờ duyệt';
+                                                                        $statusClass = 'bg-warning';
+                                                                        break;
+                                                                    case 'confirmed':
+                                                                        $statusText = 'Đã duyệt';
+                                                                        $statusClass = 'bg-success';
+                                                                        break;
+                                                                    case 'cancelled':
+                                                                        $statusText = 'Đã hủy';
+                                                                        $statusClass = 'bg-danger';
+                                                                        break;
+                                                                    default:
+                                                                        $statusText = ucfirst($order['status']);
+                                                                        $statusClass = 'bg-secondary';
+                                                                }
+                                                                ?>
+                                                                <span class="badge <?php echo $statusClass; ?>">
+                                                                    <?php echo $statusText; ?>
+                                                                </span>
+                                                            </td>
+                                                            <td>
+                                                                <div class="btn-group btn-group-sm">
+                                                                    <button class="btn btn-outline-info"
+                                                                        onclick="viewOrderDetails(<?php echo $order['order_id']; ?>)"
+                                                                        title="Xem chi tiết">
+                                                                        <i class="fas fa-eye"></i>
+                                                                    </button>
+                                                                    <?php if ($order['status'] === 'pending'): ?>
+                                                                        <button class="btn btn-outline-success"
+                                                                            onclick="approveOrder(<?php echo $order['order_id']; ?>)"
+                                                                            title="Duyệt đơn">
+                                                                            <i class="fas fa-check"></i>
+                                                                        </button>
+                                                                        <button class="btn btn-outline-danger"
+                                                                            onclick="cancelOrder(<?php echo $order['order_id']; ?>)"
+                                                                            title="Hủy đơn">
+                                                                            <i class="fas fa-times"></i>
+                                                                        </button>
+                                                                    <?php endif; ?>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    <?php endforeach; ?>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Pending Orders Section -->
+                            <div id="pending-orders" class="order-section" style="display: none;">
+                                <div class="card mb-4">
+                                    <div class="card-header bg-warning text-dark">
+                                        <h5 class="mb-0">
+                                            <i class="fas fa-clock"></i> Đơn hàng chờ duyệt
+                                            <span
+                                                class="badge bg-dark"><?php echo count($pendingOrders['orders']); ?></span>
+                                        </h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <?php if (empty($pendingOrders['orders'])): ?>
+                                            <div class="text-center py-3">
+                                                <i class="fas fa-check-circle fa-2x text-success mb-2"></i>
+                                                <p class="text-muted mb-0">Không có đơn hàng nào cần duyệt!</p>
+                                            </div>
+                                        <?php else: ?>
+                                            <div class="table-responsive">
+                                                <table class="table table-striped">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Mã đơn</th>
+                                                            <th>User ID</th>
+                                                            <th>Sản phẩm</th>
+                                                            <th>Tổng tiền</th>
+                                                            <th>Phương thức</th>
+                                                            <th>Voucher</th>
+                                                            <th>Ghi chú</th>
+                                                            <th>Ngày tạo</th>
+                                                            <th>Thao tác</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <?php foreach ($pendingOrders['orders'] as $order): ?>
+                                                            <tr>
+                                                                <td>
+                                                                    <code
+                                                                        class="bg-warning bg-opacity-10 text-warning p-1 rounded">
+                                                                                                                                                                                                #<?php echo $order['order_id']; ?>
+                                                                                                                                                                                            </code>
+                                                                </td>
+                                                                <td>
+                                                                    <span class="badge bg-secondary">
+                                                                        <?php echo $order['user_id']; ?>
+                                                                    </span>
+                                                                    <br>
+                                                                    <small class="text-muted">
+                                                                        <?php
+                                                                        $user = $database->getUserById($order['user_id']);
+                                                                        echo $user ? htmlspecialchars($user->username) : 'N/A';
+                                                                        ?>
+                                                                    </small>
+                                                                </td>
+                                                                <td>
+                                                                    <small class="text-muted">
+                                                                        <?php
+                                                                        $productItems = $database->parseProductString($order['product']);
+                                                                        echo count($productItems) . ' sản phẩm';
+                                                                        ?>
+                                                                    </small>
+                                                                    <br>
+                                                                    <button class="btn btn-link btn-sm p-0"
+                                                                        onclick="showProductDetails('<?php echo htmlspecialchars($order['product']); ?>')">
+                                                                        <small>Xem chi tiết</small>
+                                                                    </button>
+                                                                </td>
+                                                                <td>
+                                                                    <strong><?php echo number_format($order['cost'], 2); ?>
+                                                                        VNĐ</strong>
+                                                                </td>
+                                                                <td>
+                                                                    <span class="badge bg-info">
+                                                                        <?php echo ucfirst($order['pay_method']); ?>
+                                                                    </span>
+                                                                </td>
+                                                                <td>
+                                                                    <?php if ($order['voucher_id']): ?>
+                                                                        <?php
+                                                                        $voucher = $database->getVoucherById($order['voucher_id']);
+                                                                        if ($voucher):
+                                                                            ?>
+                                                                            <span class="badge bg-success"
+                                                                                title="<?php echo htmlspecialchars($voucher['name']); ?>">
+                                                                                <?php echo htmlspecialchars($voucher['code']); ?>
+                                                                            </span>
+                                                                        <?php else: ?>
+                                                                            <span class="badge bg-secondary">Voucher
+                                                                                #<?php echo $order['voucher_id']; ?></span>
+                                                                        <?php endif; ?>
+                                                                    <?php else: ?>
+                                                                        <span class="text-muted">-</span>
+                                                                    <?php endif; ?>
+                                                                </td>
+                                                                <td>
+                                                                    <?php if (!empty($order['note'])): ?>
+                                                                        <span class="text-truncate d-inline-block"
+                                                                            style="max-width: 100px;"
+                                                                            title="<?php echo htmlspecialchars($order['note']); ?>">
+                                                                            <?php echo htmlspecialchars(substr($order['note'], 0, 30)) . (strlen($order['note']) > 30 ? '...' : ''); ?>
+                                                                        </span>
+                                                                    <?php else: ?>
+                                                                        <span class="text-muted">-</span>
+                                                                    <?php endif; ?>
+                                                                </td>
+                                                                <td>
+                                                                    <?php echo date('d/m/Y H:i', strtotime($order['created_at'])); ?>
+                                                                </td>
+                                                                <td>
+                                                                    <div class="btn-group btn-group-sm">
+                                                                        <button class="btn btn-outline-info"
+                                                                            onclick="viewOrderDetails(<?php echo $order['order_id']; ?>)"
+                                                                            title="Xem chi tiết">
+                                                                            <i class="fas fa-eye"></i>
+                                                                        </button>
+                                                                        <button class="btn btn-outline-success"
+                                                                            onclick="approveOrder(<?php echo $order['order_id']; ?>)"
+                                                                            title="Duyệt đơn">
+                                                                            <i class="fas fa-check"></i>
+                                                                        </button>
+                                                                        <button class="btn btn-outline-danger"
+                                                                            onclick="cancelOrder(<?php echo $order['order_id']; ?>)"
+                                                                            title="Hủy đơn">
+                                                                            <i class="fas fa-times"></i>
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        <?php endforeach; ?>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Confirmed Orders Section -->
+                            <div id="confirmed-orders" class="order-section" style="display: none;">
+                                <div class="card">
+                                    <div class="card-header bg-success text-white">
+                                        <h5 class="mb-0">
+                                            <i class="fas fa-check-circle"></i> Đơn hàng đã duyệt
+                                            <span
+                                                class="badge bg-light text-success"><?php echo count($confirmedOrders['orders']); ?></span>
+                                        </h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <?php if (empty($confirmedOrders['orders'])): ?>
+                                            <div class="text-center py-3">
+                                                <i class="fas fa-info-circle fa-2x text-muted mb-2"></i>
+                                                <p class="text-muted mb-0">Chưa có đơn hàng nào được duyệt!</p>
+                                            </div>
+                                        <?php else: ?>
+                                            <div class="table-responsive">
+                                                <table class="table table-striped">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Mã đơn</th>
+                                                            <th>User ID</th>
+                                                            <th>Sản phẩm</th>
+                                                            <th>Tổng tiền</th>
+                                                            <th>Phương thức</th>
+                                                            <th>Voucher</th>
+                                                            <th>Ghi chú</th>
+                                                            <th>Ngày duyệt</th>
+                                                            <th>Thao tác</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <?php foreach ($confirmedOrders['orders'] as $order): ?>
+                                                            <tr>
+                                                                <td>
+                                                                    <code
+                                                                        class="bg-success bg-opacity-10 text-success p-1 rounded">
+                                                                                                                                                                                                #<?php echo $order['order_id']; ?>
+                                                                                                                                                                                            </code>
+                                                                </td>
+                                                                <td>
+                                                                    <span class="badge bg-secondary">
+                                                                        <?php echo $order['user_id']; ?>
+                                                                    </span>
+                                                                    <br>
+                                                                    <small class="text-muted">
+                                                                        <?php
+                                                                        $user = $database->getUserById($order['user_id']);
+                                                                        echo $user ? htmlspecialchars($user->username) : 'N/A';
+                                                                        ?>
+                                                                    </small>
+                                                                </td>
+                                                                <td>
+                                                                    <small class="text-muted">
+                                                                        <?php
+                                                                        $productItems = $database->parseProductString($order['product']);
+                                                                        echo count($productItems) . ' sản phẩm';
+                                                                        ?>
+                                                                    </small>
+                                                                    <br>
+                                                                    <button class="btn btn-link btn-sm p-0"
+                                                                        onclick="showProductDetails('<?php echo htmlspecialchars($order['product']); ?>')">
+                                                                        <small>Xem chi tiết</small>
+                                                                    </button>
+                                                                </td>
+                                                                <td>
+                                                                    <strong><?php echo number_format($order['cost'], 2); ?>
+                                                                        VNĐ</strong>
+                                                                </td>
+                                                                <td>
+                                                                    <span class="badge bg-info">
+                                                                        <?php echo ucfirst($order['pay_method']); ?>
+                                                                    </span>
+                                                                </td>
+                                                                <td>
+                                                                    <?php if ($order['voucher_id']): ?>
+                                                                        <?php
+                                                                        $voucher = $database->getVoucherById($order['voucher_id']);
+                                                                        if ($voucher):
+                                                                            ?>
+                                                                            <span class="badge bg-success"
+                                                                                title="<?php echo htmlspecialchars($voucher['name']); ?>">
+                                                                                <?php echo htmlspecialchars($voucher['code']); ?>
+                                                                            </span>
+                                                                        <?php else: ?>
+                                                                            <span class="badge bg-secondary">Voucher
+                                                                                #<?php echo $order['voucher_id']; ?></span>
+                                                                        <?php endif; ?>
+                                                                    <?php else: ?>
+                                                                        <span class="text-muted">-</span>
+                                                                    <?php endif; ?>
+                                                                </td>
+                                                                <td>
+                                                                    <?php if (!empty($order['note'])): ?>
+                                                                        <span class="text-truncate d-inline-block"
+                                                                            style="max-width: 100px;"
+                                                                            title="<?php echo htmlspecialchars($order['note']); ?>">
+                                                                            <?php echo htmlspecialchars(substr($order['note'], 0, 30)) . (strlen($order['note']) > 30 ? '...' : ''); ?>
+                                                                        </span>
+                                                                    <?php else: ?>
+                                                                        <span class="text-muted">-</span>
+                                                                    <?php endif; ?>
+                                                                </td>
+                                                                <td>
+                                                                    <?php echo date('d/m/Y H:i', strtotime($order['created_at'])); ?>
+                                                                </td>
+                                                                <td>
+                                                                    <div class="btn-group btn-group-sm">
+                                                                        <button class="btn btn-outline-info"
+                                                                            onclick="viewOrderDetails(<?php echo $order['order_id']; ?>)"
+                                                                            title="Xem chi tiết">
+                                                                            <i class="fas fa-eye"></i>
+                                                                        </button>
+                                                                        <button class="btn btn-outline-danger"
+                                                                            onclick="cancelOrder(<?php echo $order['order_id']; ?>)"
+                                                                            title="Hủy đơn">
+                                                                            <i class="fas fa-times"></i>
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        <?php endforeach; ?>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Cancelled Orders Section -->
+                            <div id="cancelled-orders" class="order-section" style="display: none;">
+                                <div class="card">
+                                    <div class="card-header bg-danger text-white">
+                                        <h5 class="mb-0">
+                                            <i class="fas fa-times-circle"></i> Đơn hàng đã hủy
+                                            <span
+                                                class="badge bg-light text-danger"><?php echo count($cancelledOrders['orders']); ?></span>
+                                        </h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <?php if (empty($cancelledOrders['orders'])): ?>
+                                            <div class="text-center py-3">
+                                                <i class="fas fa-smile fa-2x text-success mb-2"></i>
+                                                <p class="text-muted mb-0">Tuyệt vời! Không có đơn hàng nào bị hủy!</p>
+                                            </div>
+                                        <?php else: ?>
+                                            <div class="table-responsive">
+                                                <table class="table table-striped">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Mã đơn</th>
+                                                            <th>User ID</th>
+                                                            <th>Sản phẩm</th>
+                                                            <th>Tổng tiền</th>
+                                                            <th>Phương thức</th>
+                                                            <th>Voucher</th>
+                                                            <th>Ghi chú</th>
+                                                            <th>Ngày hủy</th>
+                                                            <th>Thao tác</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <?php foreach ($cancelledOrders['orders'] as $order): ?>
+                                                            <tr class="table-danger">
+                                                                <td>
+                                                                    <code
+                                                                        class="bg-danger bg-opacity-10 text-danger p-1 rounded">
+                                                                                                                                                                                                #<?php echo $order['order_id']; ?>
+                                                                                                                                                                                            </code>
+                                                                </td>
+                                                                <td>
+                                                                    <span class="badge bg-secondary">
+                                                                        <?php echo $order['user_id']; ?>
+                                                                    </span>
+                                                                    <br>
+                                                                    <small class="text-muted">
+                                                                        <?php
+                                                                        $user = $database->getUserById($order['user_id']);
+                                                                        echo $user ? htmlspecialchars($user->username) : 'N/A';
+                                                                        ?>
+                                                                    </small>
+                                                                </td>
+                                                                <td>
+                                                                    <small class="text-muted">
+                                                                        <?php
+                                                                        $productItems = $database->parseProductString($order['product']);
+                                                                        echo count($productItems) . ' sản phẩm';
+                                                                        ?>
+                                                                    </small>
+                                                                    <br>
+                                                                    <button class="btn btn-link btn-sm p-0"
+                                                                        onclick="showProductDetails('<?php echo htmlspecialchars($order['product']); ?>')">
+                                                                        <small>Xem chi tiết</small>
+                                                                    </button>
+                                                                </td>
+                                                                <td>
+                                                                    <strong><?php echo number_format($order['cost'], 2); ?>
+                                                                        VNĐ</strong>
+                                                                </td>
+                                                                <td>
+                                                                    <span class="badge bg-secondary">
+                                                                        <?php echo ucfirst($order['pay_method']); ?>
+                                                                    </span>
+                                                                </td>
+                                                                <td>
+                                                                    <?php if ($order['voucher_id']): ?>
+                                                                        <?php
+                                                                        $voucher = $database->getVoucherById($order['voucher_id']);
+                                                                        if ($voucher):
+                                                                            ?>
+                                                                            <span class="badge bg-secondary"
+                                                                                title="<?php echo htmlspecialchars($voucher['name']); ?>">
+                                                                                <?php echo htmlspecialchars($voucher['code']); ?>
+                                                                            </span>
+                                                                        <?php else: ?>
+                                                                            <span class="badge bg-secondary">Voucher
+                                                                                #<?php echo $order['voucher_id']; ?></span>
+                                                                        <?php endif; ?>
+                                                                    <?php else: ?>
+                                                                        <span class="text-muted">-</span>
+                                                                    <?php endif; ?>
+                                                                </td>
+                                                                <td>
+                                                                    <?php if (!empty($order['note'])): ?>
+                                                                        <span class="text-truncate d-inline-block"
+                                                                            style="max-width: 100px;"
+                                                                            title="<?php echo htmlspecialchars($order['note']); ?>">
+                                                                            <?php echo htmlspecialchars(substr($order['note'], 0, 30)) . (strlen($order['note']) > 30 ? '...' : ''); ?>
+                                                                        </span>
+                                                                    <?php else: ?>
+                                                                        <span class="text-muted">-</span>
+                                                                    <?php endif; ?>
+                                                                </td>
+                                                                <td>
+                                                                    <?php echo date('d/m/Y H:i', strtotime($order['created_at'])); ?>
+                                                                </td>
+                                                                <td>
+                                                                    <button class="btn btn-outline-info btn-sm"
+                                                                        onclick="viewOrderDetails(<?php echo $order['order_id']; ?>)"
+                                                                        title="Xem chi tiết">
+                                                                        <i class="fas fa-eye"></i>
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        <?php endforeach; ?>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             </div>
@@ -1666,6 +2299,25 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
         <input type="hidden" name="voucher_id" id="toggle_voucher_id">
     </form>
 
+    <!-- Approve Order Form -->
+    <form id="approveOrderForm" method="POST" style="display: none;">
+        <input type="hidden" name="action" value="approve_order">
+        <input type="hidden" name="order_id" id="approve_order_id">
+    </form>
+
+    <!-- Cancel Order Form -->
+    <form id="cancelOrderForm" method="POST" style="display: none;">
+        <input type="hidden" name="action" value="cancel_order">
+        <input type="hidden" name="order_id" id="cancel_order_id">
+    </form>
+
+    <!-- Update Order Status Form -->
+    <form id="updateOrderStatusForm" method="POST" style="display: none;">
+        <input type="hidden" name="action" value="update_order_status">
+        <input type="hidden" name="order_id" id="update_order_id">
+        <input type="hidden" name="status" id="update_order_status">
+    </form>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Tab navigation
@@ -1679,19 +2331,16 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
 
         // Book functions
         function editBook(book) {
+            saveActiveTab('books');
+
             document.getElementById('edit_book_id').value = book.id;
             document.getElementById('edit_title').value = book.title;
             document.getElementById('edit_author').value = book.author;
             document.getElementById('edit_category').value = book.category;
             document.getElementById('edit_price').value = book.price;
             document.getElementById('edit_stock').value = book.stock;
-            document.getElementById('edit_image_url').value = book.image_url || '';
+            document.getElementById('edit_image_url').value = book.image || '';
             document.getElementById('edit_description').value = book.description || '';
-
-            // Switch to books tab and show modal
-            const booksTab = document.querySelector('[href="#books"]');
-            const tab = new bootstrap.Tab(booksTab);
-            tab.show();
 
             const modal = new bootstrap.Modal(document.getElementById('editBookModal'));
             modal.show();
@@ -1699,22 +2348,44 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
 
         function deleteBook(id, title) {
             if (confirm(`Bạn có chắc muốn xóa sách "${title}"?`)) {
+                saveActiveTab('books');
+
+                // Create delete form if not exists
+                let deleteForm = document.getElementById('deleteBookForm');
+                if (!deleteForm) {
+                    deleteForm = document.createElement('form');
+                    deleteForm.id = 'deleteBookForm';
+                    deleteForm.method = 'POST';
+                    deleteForm.style.display = 'none';
+
+                    const actionInput = document.createElement('input');
+                    actionInput.type = 'hidden';
+                    actionInput.name = 'action';
+                    actionInput.value = 'delete_book';
+
+                    const idInput = document.createElement('input');
+                    idInput.type = 'hidden';
+                    idInput.name = 'book_id';
+                    idInput.id = 'delete_book_id';
+
+                    deleteForm.appendChild(actionInput);
+                    deleteForm.appendChild(idInput);
+                    document.body.appendChild(deleteForm);
+                }
+
                 document.getElementById('delete_book_id').value = id;
-                document.getElementById('deleteBookForm').submit();
+                deleteForm.submit();
             }
         }
 
         // User functions
         function editUser(user) {
+            saveActiveTab('users');
+
             document.getElementById('edit_user_id').value = user.user_id;
             document.getElementById('edit_username').value = user.username;
             document.getElementById('edit_email').value = user.email;
             document.getElementById('edit_permission').value = user.permission;
-
-            // Switch to users tab and show modal
-            const usersTab = document.querySelector('[href="#users"]');
-            const tab = new bootstrap.Tab(usersTab);
-            tab.show();
 
             const modal = new bootstrap.Modal(document.getElementById('editUserModal'));
             modal.show();
@@ -1722,14 +2393,40 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
 
         function deleteUser(id, username) {
             if (confirm(`Bạn có chắc muốn xóa người dùng "${username}"?`)) {
+                saveActiveTab('users');
+
+                // Create delete form if not exists
+                let deleteForm = document.getElementById('deleteUserForm');
+                if (!deleteForm) {
+                    deleteForm = document.createElement('form');
+                    deleteForm.id = 'deleteUserForm';
+                    deleteForm.method = 'POST';
+                    deleteForm.style.display = 'none';
+
+                    const actionInput = document.createElement('input');
+                    actionInput.type = 'hidden';
+                    actionInput.name = 'action';
+                    actionInput.value = 'delete_user';
+
+                    const idInput = document.createElement('input');
+                    idInput.type = 'hidden';
+                    idInput.name = 'user_id';
+                    idInput.id = 'delete_user_id';
+
+                    deleteForm.appendChild(actionInput);
+                    deleteForm.appendChild(idInput);
+                    document.body.appendChild(deleteForm);
+                }
+
                 document.getElementById('delete_user_id').value = id;
-                document.getElementById('deleteUserForm').submit();
+                deleteForm.submit();
             }
         }
 
         // Banner management functions
         function deleteBanner(fileName) {
             if (confirm(`Bạn có chắc muốn xóa banner "${fileName}"?`)) {
+                saveActiveTab('banners');
                 document.getElementById('delete_banner_file').value = fileName;
                 document.getElementById('deleteBannerForm').submit();
             }
@@ -1737,6 +2434,8 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
 
         // Voucher functions
         function editVoucher(voucher) {
+            saveActiveTab('vouchers');
+
             document.getElementById('edit_voucher_id').value = voucher.voucher_id;
             document.getElementById('edit_voucher_code_display').value = voucher.code;
             document.getElementById('edit_voucher_name').value = voucher.name;
@@ -1747,17 +2446,13 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
             document.getElementById('edit_voucher_active').checked = voucher.is_active == 1;
             document.getElementById('edit_voucher_expires').value = voucher.expires_at || '';
 
-            // Switch to vouchers tab and show modal
-            const vouchersTab = document.querySelector('[href="#vouchers"]');
-            const tab = new bootstrap.Tab(vouchersTab);
-            tab.show();
-
             const modal = new bootstrap.Modal(document.getElementById('editVoucherModal'));
             modal.show();
         }
 
         function deleteVoucher(voucherId, name) {
             if (confirm(`Bạn có chắc muốn xóa voucher "${name}"?`)) {
+                saveActiveTab('vouchers');
                 document.getElementById('delete_voucher_id').value = voucherId;
                 document.getElementById('deleteVoucherForm').submit();
             }
@@ -1766,10 +2461,402 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
         function toggleVoucherStatus(voucherId, name, currentStatus) {
             const action = currentStatus ? 'vô hiệu hóa' : 'kích hoạt';
             if (confirm(`Bạn có chắc muốn ${action} voucher "${name}"?`)) {
+                saveActiveTab('vouchers');
                 document.getElementById('toggle_voucher_id').value = voucherId;
                 document.getElementById('toggleVoucherForm').submit();
             }
         }
+
+        // Order functions
+        function viewOrderDetails(orderId) {
+            saveActiveTab('orders');
+            // Redirect to order details page
+            window.location.href = '/DoAn_BookStore/view/admin/order_details.php?order_id=' + orderId;
+        }
+
+        function approveOrder(orderId) {
+            if (confirm('Bạn có chắc muốn duyệt đơn hàng này?')) {
+                saveActiveTab('orders');
+                document.getElementById('approve_order_id').value = orderId;
+                document.getElementById('approveOrderForm').submit();
+            }
+        }
+
+        function cancelOrder(orderId) {
+            if (confirm('Bạn có chắc muốn hủy đơn hàng này?')) {
+                saveActiveTab('orders');
+                document.getElementById('cancel_order_id').value = orderId;
+                document.getElementById('cancelOrderForm').submit();
+            }
+        }
+
+        function showProductDetails(productString) {
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('productDetailsModal'));
+
+            // Show loading state
+            document.getElementById('product-detail-content').innerHTML = `
+                <div class="text-center">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Đang tải thông tin...</p>
+                </div>
+            `;
+
+            modal.show();
+
+            // Parse product string and display
+            setTimeout(() => {
+                try {
+                    const products = productString.split(',');
+                    let html = '<div class="table-responsive"><table class="table table-striped"><thead><tr><th>ID Sách</th><th>Số lượng</th></tr></thead><tbody>';
+
+                    products.forEach(product => {
+                        const parts = product.split('*');
+                        if (parts.length === 2) {
+                            html += `<tr><td>Sách #${parts[0]}</td><td>${parts[1]}</td></tr>`;
+                        }
+                    });
+
+                    html += '</tbody></table></div>';
+                    document.getElementById('product-detail-content').innerHTML = html;
+                } catch (e) {
+                    document.getElementById('product-detail-content').innerHTML = `
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            Không thể phân tích chuỗi sản phẩm: ${productString}
+                        </div>
+                    `;
+                }
+            }, 500);
+        }
+
+        // Save and restore active tab
+        function saveActiveTab(tabId) {
+            localStorage.setItem('adminActiveTab', tabId);
+        }
+
+        function restoreActiveTab() {
+            const savedTab = localStorage.getItem('adminActiveTab');
+            if (savedTab) {
+                const tabElement = document.querySelector(`[href="#${savedTab}"]`);
+                if (tabElement) {
+                    const tab = new bootstrap.Tab(tabElement);
+                    tab.show();
+
+                    // Special handling for orders tab
+                    if (savedTab === 'orders') {
+                        const savedOrderSection = localStorage.getItem('adminActiveOrderSection') || 'all';
+                        setTimeout(() => {
+                            showOrdersByStatus(savedOrderSection);
+                        }, 100);
+                    }
+                }
+            }
+        }
+
+        // Save order section state
+        function saveOrderSection(section) {
+            localStorage.setItem('adminActiveOrderSection', section);
+        }
+
+        // Update showOrdersByStatus function to save state
+        function showOrdersByStatus(status) {
+            // Save current section
+            saveOrderSection(status);
+
+            // Hide all order sections
+            document.querySelectorAll('.order-section').forEach(section => {
+                section.style.display = 'none';
+            });
+
+            // Show selected section
+            const sectionId = status + '-orders';
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.style.display = 'block';
+            }
+
+            // Update button states
+            document.querySelectorAll('.btn-group .btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Find and activate the correct button
+            const buttons = document.querySelectorAll('.btn-group .btn');
+            buttons.forEach(btn => {
+                if (btn.textContent.includes('Tất cả') && status === 'all') btn.classList.add('active');
+                else if (btn.textContent.includes('Chờ duyệt') && status === 'pending') btn.classList.add('active');
+                else if (btn.textContent.includes('Đã duyệt') && status === 'confirmed') btn.classList.add('active');
+                else if (btn.textContent.includes('Đã hủy') && status === 'cancelled') btn.classList.add('active');
+            });
+        }
+
+        // Update all edit functions to save current tab
+        function editBook(book) {
+            saveActiveTab('books');
+
+            document.getElementById('edit_book_id').value = book.id;
+            document.getElementById('edit_title').value = book.title;
+            document.getElementById('edit_author').value = book.author;
+            document.getElementById('edit_category').value = book.category;
+            document.getElementById('edit_price').value = book.price;
+            document.getElementById('edit_stock').value = book.stock;
+            document.getElementById('edit_image_url').value = book.image || '';
+            document.getElementById('edit_description').value = book.description || '';
+
+            const modal = new bootstrap.Modal(document.getElementById('editBookModal'));
+            modal.show();
+        }
+
+        function deleteBook(id, title) {
+            if (confirm(`Bạn có chắc muốn xóa sách "${title}"?`)) {
+                saveActiveTab('books');
+
+                // Create delete form if not exists
+                let deleteForm = document.getElementById('deleteBookForm');
+                if (!deleteForm) {
+                    deleteForm = document.createElement('form');
+                    deleteForm.id = 'deleteBookForm';
+                    deleteForm.method = 'POST';
+                    deleteForm.style.display = 'none';
+
+                    const actionInput = document.createElement('input');
+                    actionInput.type = 'hidden';
+                    actionInput.name = 'action';
+                    actionInput.value = 'delete_book';
+
+                    const idInput = document.createElement('input');
+                    idInput.type = 'hidden';
+                    idInput.name = 'book_id';
+                    idInput.id = 'delete_book_id';
+
+                    deleteForm.appendChild(actionInput);
+                    deleteForm.appendChild(idInput);
+                    document.body.appendChild(deleteForm);
+                }
+
+                document.getElementById('delete_book_id').value = id;
+                deleteForm.submit();
+            }
+        }
+
+        function editUser(user) {
+            saveActiveTab('users');
+
+            document.getElementById('edit_user_id').value = user.user_id;
+            document.getElementById('edit_username').value = user.username;
+            document.getElementById('edit_email').value = user.email;
+            document.getElementById('edit_permission').value = user.permission;
+
+            const modal = new bootstrap.Modal(document.getElementById('editUserModal'));
+            modal.show();
+        }
+
+        function deleteUser(id, username) {
+            if (confirm(`Bạn có chắc muốn xóa người dùng "${username}"?`)) {
+                saveActiveTab('users');
+
+                // Create delete form if not exists
+                let deleteForm = document.getElementById('deleteUserForm');
+                if (!deleteForm) {
+                    deleteForm = document.createElement('form');
+                    deleteForm.id = 'deleteUserForm';
+                    deleteForm.method = 'POST';
+                    deleteForm.style.display = 'none';
+
+                    const actionInput = document.createElement('input');
+                    actionInput.type = 'hidden';
+                    actionInput.name = 'action';
+                    actionInput.value = 'delete_user';
+
+                    const idInput = document.createElement('input');
+                    idInput.type = 'hidden';
+                    idInput.name = 'user_id';
+                    idInput.id = 'delete_user_id';
+
+                    deleteForm.appendChild(actionInput);
+                    deleteForm.appendChild(idInput);
+                    document.body.appendChild(deleteForm);
+                }
+
+                document.getElementById('delete_user_id').value = id;
+                deleteForm.submit();
+            }
+        }
+
+        function deleteBanner(fileName) {
+            if (confirm(`Bạn có chắc muốn xóa banner "${fileName}"?`)) {
+                saveActiveTab('banners');
+                document.getElementById('delete_banner_file').value = fileName;
+                document.getElementById('deleteBannerForm').submit();
+            }
+        }
+
+        function editVoucher(voucher) {
+            saveActiveTab('vouchers');
+
+            document.getElementById('edit_voucher_id').value = voucher.voucher_id;
+            document.getElementById('edit_voucher_code_display').value = voucher.code;
+            document.getElementById('edit_voucher_name').value = voucher.name;
+            document.getElementById('edit_voucher_description').value = voucher.description || '';
+            document.getElementById('edit_voucher_min_amount').value = voucher.min_order_amount;
+            document.getElementById('edit_voucher_discount').value = voucher.discount_percent;
+            document.getElementById('edit_voucher_quantity').value = voucher.quantity;
+            document.getElementById('edit_voucher_active').checked = voucher.is_active == 1;
+            document.getElementById('edit_voucher_expires').value = voucher.expires_at || '';
+
+            const modal = new bootstrap.Modal(document.getElementById('editVoucherModal'));
+            modal.show();
+        }
+
+        function deleteVoucher(voucherId, name) {
+            if (confirm(`Bạn có chắc muốn xóa voucher "${name}"?`)) {
+                saveActiveTab('vouchers');
+                document.getElementById('delete_voucher_id').value = voucherId;
+                document.getElementById('deleteVoucherForm').submit();
+            }
+        }
+
+        function toggleVoucherStatus(voucherId, name, currentStatus) {
+            const action = currentStatus ? 'vô hiệu hóa' : 'kích hoạt';
+            if (confirm(`Bạn có chắc muốn ${action} voucher "${name}"?`)) {
+                saveActiveTab('vouchers');
+                document.getElementById('toggle_voucher_id').value = voucherId;
+                document.getElementById('toggleVoucherForm').submit();
+            }
+        }
+
+        // Order functions
+        function viewOrderDetails(orderId) {
+            saveActiveTab('orders');
+            // Redirect to order details page
+            window.location.href = '/DoAn_BookStore/view/admin/order_details.php?order_id=' + orderId;
+        }
+
+        function approveOrder(orderId) {
+            if (confirm('Bạn có chắc muốn duyệt đơn hàng này?')) {
+                saveActiveTab('orders');
+                document.getElementById('approve_order_id').value = orderId;
+                document.getElementById('approveOrderForm').submit();
+            }
+        }
+
+        function cancelOrder(orderId) {
+            if (confirm('Bạn có chắc muốn hủy đơn hàng này?')) {
+                saveActiveTab('orders');
+                document.getElementById('cancel_order_id').value = orderId;
+                document.getElementById('cancelOrderForm').submit();
+            }
+        }
+
+        // Save and restore active tab
+        function saveActiveTab(tabId) {
+            localStorage.setItem('adminActiveTab', tabId);
+        }
+
+        function restoreActiveTab() {
+            const savedTab = localStorage.getItem('adminActiveTab');
+            if (savedTab) {
+                const tabElement = document.querySelector(`[href="#${savedTab}"]`);
+                if (tabElement) {
+                    const tab = new bootstrap.Tab(tabElement);
+                    tab.show();
+
+                    // Special handling for orders tab
+                    if (savedTab === 'orders') {
+                        const savedOrderSection = localStorage.getItem('adminActiveOrderSection') || 'all';
+                        setTimeout(() => {
+                            showOrdersByStatus(savedOrderSection);
+                        }, 100);
+                    }
+                }
+            }
+        }
+
+        // Save order section state
+        function saveOrderSection(section) {
+            localStorage.setItem('adminActiveOrderSection', section);
+        }
+
+        // Update showOrdersByStatus function to save state
+        function showOrdersByStatus(status) {
+            // Save current section
+            saveOrderSection(status);
+
+            // Hide all order sections
+            document.querySelectorAll('.order-section').forEach(section => {
+                section.style.display = 'none';
+            });
+
+            // Show selected section
+            const sectionId = status + '-orders';
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.style.display = 'block';
+            }
+
+            // Update button states
+            document.querySelectorAll('.btn-group .btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Find and activate the correct button
+            const buttons = document.querySelectorAll('.btn-group .btn');
+            buttons.forEach(btn => {
+                if (btn.textContent.includes('Tất cả') && status === 'all') btn.classList.add('active');
+                else if (btn.textContent.includes('Chờ duyệt') && status === 'pending') btn.classList.add('active');
+                else if (btn.textContent.includes('Đã duyệt') && status === 'confirmed') btn.classList.add('active');
+                else if (btn.textContent.includes('Đã hủy') && status === 'cancelled') btn.classList.add('active');
+            });
+        }
+
+        // Update tab event listeners
+        document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
+            tab.addEventListener('shown.bs.tab', function (e) {
+                const tabId = this.getAttribute('href').substring(1);
+                saveActiveTab(tabId);
+
+                // Update active state
+                document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
+                this.classList.add('active');
+
+                // Special handling for orders tab
+                if (tabId === 'orders') {
+                    setTimeout(() => {
+                        const savedOrderSection = localStorage.getItem('adminActiveOrderSection') || 'all';
+                        showOrdersByStatus(savedOrderSection);
+                    }, 100);
+                }
+            });
+        });
+
+        // Update order button event listeners
+        document.addEventListener('DOMContentLoaded', function () {
+            // Restore active tab on page load
+            restoreActiveTab();
+
+            // Add event listeners to order status buttons
+            const orderButtons = document.querySelectorAll('.btn-group .btn');
+            orderButtons.forEach(btn => {
+                btn.addEventListener('click', function () {
+                    if (this.textContent.includes('Tất cả')) saveOrderSection('all');
+                    else if (this.textContent.includes('Chờ duyệt')) saveOrderSection('pending');
+                    else if (this.textContent.includes('Đã duyệt')) saveOrderSection('confirmed');
+                    else if (this.textContent.includes('Đã hủy')) saveOrderSection('cancelled');
+                });
+            });
+
+            // Add event listeners to form submissions to save current tab
+            document.querySelectorAll('form').forEach(form => {
+                form.addEventListener('submit', function () {
+                    const currentTab = document.querySelector('.nav-link.active');
+                    if (currentTab) {
+                        const tabId = currentTab.getAttribute('href').substring(1);
+                        saveActiveTab(tabId);
+                    }
+                });
+            });
+        });
 
         // Auto-hide alerts
         setTimeout(function () {
