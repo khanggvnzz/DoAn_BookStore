@@ -108,6 +108,34 @@ class Database
         return null;
     }
 
+    public function getBookById($bookId)
+    {
+        try {
+            if (!is_numeric($bookId) || $bookId <= 0) {
+                throw new InvalidArgumentException('Book ID must be a positive integer');
+            }
+
+            $sql = "SELECT * FROM books WHERE id = :id LIMIT 1";
+            $params = ['id' => (int) $bookId];
+
+            $result = $this->fetch($sql, $params);
+
+            return $result ?: null;
+
+        } catch (Exception $e) {
+            error_log('Get book by ID error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    public function getCategoryIdbyName($name)
+    {
+        $sql = "SELECT id FROM categories WHERE name = :name LIMIT 1";
+        $params = ['name' => $name];
+        return $this->fetch($sql, $params);
+    }
+
+
     // Pagination function - Fetch records with pagination
     public function fetchWithPagination($table, $page = 1, $perPage = 15, $where = '', $params = [], $orderBy = 'id DESC')
     {
@@ -362,7 +390,7 @@ class Database
     public function delete($table, $where, $params = [])
     {
         $sql = "DELETE FROM {$table} WHERE {$where}";
-        var_dump($sql, $where, $params); // Debugging line to check SQL and params
+        // var_dump($sql, $where, $params); // Debugging line to check SQL and params
 
         try {
             $stmt = $this->getConnection()->prepare($sql);
@@ -2203,8 +2231,7 @@ class Database
     }
     public function deleteVoucherById($table, $where, $params = [])
     {
-        $sql = "DELETE FROM {$table} WHERE voucher_id = {$where}";
-        var_dump($sql, $where, $params); // Debugging line to check SQL and params
+        $sql = "DELETE FROM {$table} WHERE voucher_id = {$where}";// Debugging line to check SQL and params
 
         try {
             $stmt = $this->getConnection()->prepare($sql);
@@ -2344,6 +2371,614 @@ class Database
         }
     }
 
+    /**
+     * Comments-specific methods
+     */
 
+    /**
+     * Add new comment
+     */
+    public function addComment($commentData)
+    {
+        try {
+            // Validate required fields
+            $requiredFields = ['user_id', 'id', 'content'];
+            foreach ($requiredFields as $field) {
+                if (!isset($commentData[$field]) || empty($commentData[$field])) {
+                    throw new InvalidArgumentException("Field {$field} is required");
+                }
+            }
+
+            // Validate and clean data
+            $cleanData = [];
+            $allowedFields = ['user_id', 'id', 'content', 'image', 'vote'];
+
+            foreach ($commentData as $field => $value) {
+                if (in_array($field, $allowedFields)) {
+                    switch ($field) {
+                        case 'user_id':
+                        case 'id':
+                            if (!is_numeric($value) || $value <= 0) {
+                                throw new InvalidArgumentException("{$field} must be a positive integer");
+                            }
+                            $cleanData[$field] = (int) $value;
+                            break;
+                        case 'vote':
+                            if ($value !== null && !is_numeric($value)) {
+                                throw new InvalidArgumentException("vote must be numeric or null");
+                            }
+                            $cleanData[$field] = $value !== null ? (int) $value : 0;
+                            break;
+                        case 'content':
+                            if (empty(trim($value))) {
+                                throw new InvalidArgumentException("content cannot be empty");
+                            }
+                            $cleanData[$field] = trim($value);
+                            break;
+                        case 'image':
+                            $cleanData[$field] = $value ? trim($value) : null;
+                            break;
+                    }
+                }
+            }
+
+            // Add create_at timestamp
+            $cleanData['create_at'] = date('Y-m-d H:i:s');
+
+            // Verify user exists
+            if (!$this->exists('users', 'user_id = :user_id', ['user_id' => $cleanData['user_id']])) {
+                throw new InvalidArgumentException("User does not exist");
+            }
+
+            // Verify book exists
+            if (!$this->exists('books', 'id = :id', ['id' => $cleanData['id']])) {
+                throw new InvalidArgumentException("Book does not exist");
+            }
+
+            return $this->insert('comments', $cleanData);
+
+        } catch (Exception $e) {
+            error_log('Add comment error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Update comment
+     */
+    public function updateComment($commentId, $commentData)
+    {
+        try {
+            if (!is_numeric($commentId) || $commentId <= 0) {
+                throw new InvalidArgumentException('Comment ID must be a positive integer');
+            }
+
+            // Check if comment exists
+            if (!$this->exists('comments', 'cmt_id = :cmt_id', ['cmt_id' => $commentId])) {
+                throw new InvalidArgumentException("Comment does not exist");
+            }
+
+            // Validate and clean data
+            $cleanData = [];
+            $allowedFields = ['content', 'image', 'vote'];
+
+            foreach ($commentData as $field => $value) {
+                if (in_array($field, $allowedFields)) {
+                    switch ($field) {
+                        case 'vote':
+                            if ($value !== null && !is_numeric($value)) {
+                                throw new InvalidArgumentException("vote must be numeric or null");
+                            }
+                            $cleanData[$field] = $value !== null ? (int) $value : 0;
+                            break;
+                        case 'content':
+                            if ($value !== null) {
+                                if (empty(trim($value))) {
+                                    throw new InvalidArgumentException("content cannot be empty");
+                                }
+                                $cleanData[$field] = trim($value);
+                            }
+                            break;
+                        case 'image':
+                            $cleanData[$field] = $value ? trim($value) : null;
+                            break;
+                    }
+                }
+            }
+
+            if (empty($cleanData)) {
+                throw new InvalidArgumentException("No valid fields to update");
+            }
+
+            return $this->update(
+                'comments',
+                $cleanData,
+                'cmt_id = :cmt_id',
+                ['cmt_id' => (int) $commentId]
+            );
+
+        } catch (Exception $e) {
+            error_log('Update comment error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Remove comment
+     */
+    public function removeComment($commentId)
+    {
+        try {
+            if (!is_numeric($commentId) || $commentId <= 0) {
+                throw new InvalidArgumentException('Comment ID must be a positive integer');
+            }
+
+            // Check if comment exists
+            if (!$this->exists('comments', 'cmt_id = :cmt_id', ['cmt_id' => $commentId])) {
+                throw new InvalidArgumentException("Comment does not exist");
+            }
+
+            return $this->delete(
+                'comments',
+                'cmt_id = :cmt_id',
+                ['cmt_id' => (int) $commentId]
+            );
+
+        } catch (Exception $e) {
+            error_log('Remove comment error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Get comment by ID
+     */
+    public function getCommentById($commentId)
+    {
+        try {
+            if (!is_numeric($commentId) || $commentId <= 0) {
+                throw new InvalidArgumentException('Comment ID must be a positive integer');
+            }
+
+            $result = $this->fetch(
+                "SELECT c.*, u.username, u.name as user_name, b.title as book_title 
+                 FROM comments c 
+                 LEFT JOIN users u ON c.user_id = u.user_id 
+                 LEFT JOIN books b ON c.id = b.id 
+                 WHERE c.cmt_id = :cmt_id 
+                 LIMIT 1",
+                ['cmt_id' => (int) $commentId]
+            );
+
+            return $result ?: null;
+
+        } catch (Exception $e) {
+            error_log('Get comment by ID error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Get vote by comment ID (alias for getCommentById focusing on vote)
+     */
+    public function getVoteById($commentId)
+    {
+        try {
+            if (!is_numeric($commentId) || $commentId <= 0) {
+                throw new InvalidArgumentException('Comment ID must be a positive integer');
+            }
+
+            $result = $this->fetch(
+                "SELECT cmt_id, vote, user_id, id FROM comments WHERE cmt_id = :cmt_id LIMIT 1",
+                ['cmt_id' => (int) $commentId]
+            );
+
+            return $result ?: null;
+
+        } catch (Exception $e) {
+            error_log('Get vote by ID error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Get comments by book ID with pagination
+     */
+    public function getCommentsByBookId($bookId, $page = 1, $perPage = 10, $orderBy = 'create_at DESC')
+    {
+        try {
+            if (!is_numeric($bookId) || $bookId <= 0) {
+                throw new InvalidArgumentException('Book ID must be a positive integer');
+            }
+
+            $offset = ($page - 1) * $perPage;
+
+            $comments = $this->fetchAll(
+                "SELECT c.*, u.username, u.name as user_name 
+                 FROM comments c 
+                 LEFT JOIN users u ON c.user_id = u.user_id 
+                 WHERE c.id = :book_id 
+                 ORDER BY {$orderBy}
+                 LIMIT {$perPage} OFFSET {$offset}",
+                ['book_id' => (int) $bookId]
+            );
+
+            // Get total count for pagination
+            $totalComments = $this->count('comments', 'id = :book_id', ['book_id' => (int) $bookId]);
+            $totalPages = ceil($totalComments / $perPage);
+
+            return [
+                'comments' => $comments ?: [],
+                'pagination' => [
+                    'current_page' => $page,
+                    'per_page' => $perPage,
+                    'total_records' => $totalComments,
+                    'total_pages' => $totalPages,
+                    'has_previous' => $page > 1,
+                    'has_next' => $page < $totalPages
+                ]
+            ];
+
+        } catch (Exception $e) {
+            error_log('Get comments by book ID error: ' . $e->getMessage());
+            return [
+                'comments' => [],
+                'pagination' => [
+                    'current_page' => 1,
+                    'per_page' => $perPage,
+                    'total_records' => 0,
+                    'total_pages' => 0,
+                    'has_previous' => false,
+                    'has_next' => false
+                ]
+            ];
+        }
+    }
+
+    /**
+     * Get comments by user ID
+     */
+    public function getCommentsByUserId($userId, $page = 1, $perPage = 10)
+    {
+        try {
+            if (!is_numeric($userId) || $userId <= 0) {
+                throw new InvalidArgumentException('User ID must be a positive integer');
+            }
+
+            $offset = ($page - 1) * $perPage;
+
+            $comments = $this->fetchAll(
+                "SELECT c.*, b.title as book_title 
+                 FROM comments c 
+                 LEFT JOIN books b ON c.id = b.id 
+                 WHERE c.user_id = :user_id 
+                 ORDER BY c.create_at DESC
+                 LIMIT {$perPage} OFFSET {$offset}",
+                ['user_id' => (int) $userId]
+            );
+
+            // Get total count
+            $totalComments = $this->count('comments', 'user_id = :user_id', ['user_id' => (int) $userId]);
+            $totalPages = ceil($totalComments / $perPage);
+
+            return [
+                'comments' => $comments ?: [],
+                'pagination' => [
+                    'current_page' => $page,
+                    'per_page' => $perPage,
+                    'total_records' => $totalComments,
+                    'total_pages' => $totalPages,
+                    'has_previous' => $page > 1,
+                    'has_next' => $page < $totalPages
+                ]
+            ];
+
+        } catch (Exception $e) {
+            error_log('Get comments by user ID error: ' . $e->getMessage());
+            return [
+                'comments' => [],
+                'pagination' => [
+                    'current_page' => 1,
+                    'per_page' => $perPage,
+                    'total_records' => 0,
+                    'total_pages' => 0,
+                    'has_previous' => false,
+                    'has_next' => false
+                ]
+            ];
+        }
+    }
+
+    /**
+     * Update comment vote
+     */
+    public function updateCommentVote($commentId, $vote)
+    {
+        try {
+            if (!is_numeric($commentId) || $commentId <= 0) {
+                throw new InvalidArgumentException('Comment ID must be a positive integer');
+            }
+
+            if (!is_numeric($vote)) {
+                throw new InvalidArgumentException('Vote must be numeric');
+            }
+
+            $vote = (int) $vote;
+
+            // Validate vote range (assuming 1-5 rating system)
+            if ($vote < 1 || $vote > 5) {
+                throw new InvalidArgumentException('Vote must be between 1 and 5');
+            }
+
+            return $this->update(
+                'comments',
+                ['vote' => $vote],
+                'cmt_id = :cmt_id',
+                ['cmt_id' => (int) $commentId]
+            );
+
+        } catch (Exception $e) {
+            error_log('Update comment vote error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Get average vote for a book
+     */
+    public function getBookAverageVote($bookId)
+    {
+        try {
+            if (!is_numeric($bookId) || $bookId <= 0) {
+                throw new InvalidArgumentException('Book ID must be a positive integer');
+            }
+
+            $result = $this->fetch(
+                "SELECT 
+                    AVG(vote) as average_vote,
+                    COUNT(vote) as total_votes
+                 FROM comments 
+                 WHERE id = :book_id AND vote IS NOT NULL AND vote > 0",
+                ['book_id' => (int) $bookId]
+            );
+
+            return [
+                'average_vote' => $result['average_vote'] ? round((float) $result['average_vote'], 1) : 0,
+                'total_votes' => (int) $result['total_votes']
+            ];
+
+        } catch (Exception $e) {
+            error_log('Get book average vote error: ' . $e->getMessage());
+            return [
+                'average_vote' => 0,
+                'total_votes' => 0
+            ];
+        }
+    }
+
+    /**
+     * Check if user has already commented on a book
+     */
+    public function hasUserCommentedOnBook($userId, $bookId)
+    {
+        try {
+            if (!is_numeric($userId) || $userId <= 0) {
+                return false;
+            }
+            if (!is_numeric($bookId) || $bookId <= 0) {
+                return false;
+            }
+
+            return $this->exists(
+                'comments',
+                'user_id = :user_id AND id = :book_id',
+                ['user_id' => (int) $userId, 'book_id' => (int) $bookId]
+            );
+
+        } catch (Exception $e) {
+            error_log('Check user comment exists error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Get recent comments with pagination
+     */
+    public function getRecentComments($limit = 10)
+    {
+        try {
+            if (!is_numeric($limit) || $limit <= 0) {
+                $limit = 10;
+            }
+
+            return $this->fetchAll(
+                "SELECT c.*, u.username, u.name as user_name, b.title as book_title 
+                 FROM comments c 
+                 LEFT JOIN users u ON c.user_id = u.user_id 
+                 LEFT JOIN books b ON c.id = b.id 
+                 ORDER BY c.create_at DESC 
+                 LIMIT :limit",
+                ['limit' => (int) $limit]
+            ) ?: [];
+
+        } catch (Exception $e) {
+            error_log('Get recent comments error: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Delete all comments by user
+     */
+    public function deleteCommentsByUserId($userId)
+    {
+        try {
+            if (!is_numeric($userId) || $userId <= 0) {
+                throw new InvalidArgumentException('User ID must be a positive integer');
+            }
+
+            return $this->delete(
+                'comments',
+                'user_id = :user_id',
+                ['user_id' => (int) $userId]
+            );
+
+        } catch (Exception $e) {
+            error_log('Delete comments by user ID error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Delete all comments for a book
+     */
+    public function deleteCommentsByBookId($bookId)
+    {
+        try {
+            if (!is_numeric($bookId) || $bookId <= 0) {
+                throw new InvalidArgumentException('Book ID must be a positive integer');
+            }
+
+            return $this->delete(
+                'comments',
+                'id = :book_id',
+                ['book_id' => (int) $bookId]
+            );
+
+        } catch (Exception $e) {
+            error_log('Delete comments by book ID error: ' . $e->getMessage());
+            return false;
+        }
+    }
+    // public function getAllActiveVouchers()
+    // {
+    //     $sql = "SELECT * FROM vouchers 
+    //         WHERE is_active = 1 
+    //         AND expires_at > NOW() 
+    //         AND (quantity - used_count) > 0 
+    //         ORDER BY discount_percent DESC, expires_at ASC";
+
+    //     return $this->fetchAll($sql);
+    // }
+
+    /**
+     * Get voucher by code with expiry check
+     */
+    // public function getVoucherByCode($code)
+    // {
+    //     $sql = "SELECT * FROM vouchers 
+    //         WHERE code = :code 
+    //         AND is_active = 1 
+    //         AND expires_at > NOW() 
+    //         AND (quantity - used_count) > 0";
+
+    //     return $this->fetch($sql, ['code' => $code]);
+    // }
+
+    // /**
+    //  * Check if voucher can be applied
+    //  */
+    // public function canApplyVoucher($voucherCode, $orderAmount = 0)
+    // {
+    //     try {
+    //         $voucher = $this->getVoucherByCode($voucherCode);
+
+    //         if (!$voucher) {
+    //             return [
+    //                 'valid' => false,
+    //                 'message' => 'Mã voucher không tồn tại hoặc đã hết hạn'
+    //             ];
+    //         }
+
+    //         // Check if voucher is expired
+    //         if (strtotime($voucher['expires_at']) <= time()) {
+    //             return [
+    //                 'valid' => false,
+    //                 'message' => 'Mã voucher đã hết hạn'
+    //             ];
+    //         }
+
+    //         // Check if voucher is used up
+    //         if ($voucher['used_count'] >= $voucher['quantity']) {
+    //             return [
+    //                 'valid' => false,
+    //                 'message' => 'Mã voucher đã được sử dụng hết'
+    //             ];
+    //         }
+
+    //         // Check minimum order amount
+    //         if ($voucher['min_order_amount'] > 0 && $orderAmount < $voucher['min_order_amount']) {
+    //             return [
+    //                 'valid' => false,
+    //                 'message' => 'Đơn hàng phải có giá trị tối thiểu ' . number_format($voucher['min_order_amount'] * 1000, 0, ',', '.') . ' VNĐ'
+    //             ];
+    //         }
+
+    //         // Calculate discount amount
+    //         $discountAmount = ($orderAmount * $voucher['discount_percent']) / 100;
+
+    //         // Check maximum discount if set
+    //         if (isset($voucher['max_discount_amount']) && $voucher['max_discount_amount'] > 0) {
+    //             $discountAmount = min($discountAmount, $voucher['max_discount_amount']);
+    //         }
+
+    //         return [
+    //             'valid' => true,
+    //             'message' => 'Mã voucher hợp lệ',
+    //             'voucher' => $voucher,
+    //             'discount_amount' => $discountAmount,
+    //             'final_amount' => max(0, $orderAmount - $discountAmount)
+    //         ];
+
+    //     } catch (Exception $e) {
+    //         return [
+    //             'valid' => false,
+    //             'message' => 'Có lỗi xảy ra khi kiểm tra voucher: ' . $e->getMessage()
+    //         ];
+    //     }
+    // }
+
+    /**
+     * Check if voucher is expired
+     */
+    public function isVoucherExpired($voucherId)
+    {
+        $sql = "SELECT expires_at FROM vouchers WHERE id = :id";
+        $voucher = $this->fetch($sql, ['id' => $voucherId]);
+
+        if (!$voucher) {
+            return true; // Consider non-existent voucher as expired
+        }
+
+        return strtotime($voucher['expires_at']) <= time();
+    }
+
+    /**
+     * Get vouchers expiring soon (within next 7 days)
+     */
+    public function getVouchersExpiringSoon($days = 7)
+    {
+        $sql = "SELECT * FROM vouchers 
+            WHERE is_active = 1 
+            AND expires_at > NOW() 
+            AND expires_at <= DATE_ADD(NOW(), INTERVAL :days DAY)
+            AND (quantity - used_count) > 0 
+            ORDER BY expires_at ASC";
+
+        return $this->fetchAll($sql, ['days' => $days]);
+    }
+
+    /**
+     * Clean up expired vouchers (mark as inactive)
+     */
+    public function cleanupExpiredVouchers()
+    {
+        $sql = "UPDATE vouchers 
+            SET is_active = 0 
+            WHERE expires_at <= NOW() 
+            AND is_active = 1";
+
+        return $this->query($sql);
+    }
 }
 ?>

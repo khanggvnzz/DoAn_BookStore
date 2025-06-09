@@ -100,8 +100,8 @@ $userPermission = isset($_SESSION['user_permission']) ? $_SESSION['user_permissi
                     </li>
 
                     <li class="nav-item">
-                        <a class="nav-link" href="/DoAn_BookStore/about">
-                            <i class="fas fa-info-circle"></i> Giới thiệu
+                        <a class="nav-link" href="/DoAn_BookStore/view/promotion/promotion.php">
+                            <i class="fas fa-gift"></i> Khuyến mãi
                         </a>
                     </li>
 

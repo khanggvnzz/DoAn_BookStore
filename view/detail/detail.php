@@ -244,7 +244,11 @@ $relatedBooks = $db->fetchAll(
                     <!-- Rating -->
                     <div class="rating-stars">
                         <?php
-                        $rating = isset($book['rating']) ? (float) $book['rating'] : 0;
+                        // Lấy đánh giá trung bình từ comments thay vì từ book rating
+                        $avgVote = $db->getBookAverageVote($bookId);
+                        $rating = $avgVote['average_vote'];
+                        $totalVotes = $avgVote['total_votes'];
+
                         for ($i = 1; $i <= 5; $i++) {
                             if ($i <= $rating) {
                                 echo '<i class="fas fa-star"></i>';
@@ -254,7 +258,12 @@ $relatedBooks = $db->fetchAll(
                                 echo '<i class="far fa-star"></i>';
                             }
                         }
-                        echo ' (' . number_format($rating, 1) . '/5)';
+
+                        if ($totalVotes > 0) {
+                            echo ' (' . number_format($rating, 1) . '/5 - ' . $totalVotes . ' đánh giá)';
+                        } else {
+                            echo ' (Chưa có đánh giá)';
+                        }
                         ?>
                     </div>
 
@@ -309,6 +318,250 @@ $relatedBooks = $db->fetchAll(
                     <p><?php echo nl2br(htmlspecialchars($book['description'])); ?></p>
                 </div>
             <?php endif; ?>
+
+            <!-- Gợi ý đăng nhập để đánh giá (chỉ hiển thị khi chưa đăng nhập) -->
+            <?php if (!isset($_SESSION['user_id'])): ?>
+                <div class="login-suggestion-card mt-4">
+                    <div class="card border-warning">
+                        <div class="card-body text-center">
+                            <div class="login-suggestion-icon mb-3">
+                                <i class="fas fa-star fa-3x text-warning"></i>
+                            </div>
+                            <h5 class="card-title text-dark">
+                                <i class="fas fa-comments"></i> Bạn đã đọc cuốn sách này chưa?
+                            </h5>
+                            <p class="card-text text-muted">
+                                Hãy chia sẻ cảm nhận và đánh giá của bạn để giúp những độc giả khác có thêm thông tin tham
+                                khảo!
+                            </p>
+                            <div class="login-suggestion-buttons">
+                                <a href="/DoAn_BookStore/view/auth/login.php" class="btn btn-warning btn-lg me-2">
+                                    <i class="fas fa-sign-in-alt"></i> Đăng nhập để đánh giá
+                                </a>
+                                <a href="/DoAn_BookStore/view/auth/register.php" class="btn btn-outline-warning btn-lg">
+                                    <i class="fas fa-user-plus"></i> Đăng ký tài khoản
+                                </a>
+                            </div>
+                            <div class="login-benefits mt-3">
+                                <small class="text-muted">
+                                    <i class="fas fa-check-circle text-success"></i> Viết đánh giá và nhận xét
+                                    <span class="mx-2">•</span>
+                                    <i class="fas fa-check-circle text-success"></i> Lưu sách yêu thích
+                                    <span class="mx-2">•</span>
+                                    <i class="fas fa-check-circle text-success"></i> Mua sách dễ dàng
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <!-- Phần đánh giá và bình luận -->
+            <div class="comments-section mt-5">
+                <h3><i class="fas fa-comments"></i> Đánh giá và bình luận</h3>
+
+                <!-- Hiển thị số sao trung bình -->
+                <?php
+                $avgVote = $db->getBookAverageVote($bookId);
+                ?>
+                <div class="rating-summary mb-4">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="avg-rating">
+                                <span class="rating-score"><?php echo $avgVote['average_vote']; ?></span>
+                                <div class="rating-stars-large">
+                                    <?php
+                                    $avgRating = $avgVote['average_vote'];
+                                    for ($i = 1; $i <= 5; $i++) {
+                                        if ($i <= $avgRating) {
+                                            echo '<i class="fas fa-star"></i>';
+                                        } elseif ($i - 0.5 <= $avgRating) {
+                                            echo '<i class="fas fa-star-half-alt"></i>';
+                                        } else {
+                                            echo '<i class="far fa-star"></i>';
+                                        }
+                                    }
+                                    ?>
+                                </div>
+                                <div class="rating-count">
+                                    (<?php echo $avgVote['total_votes']; ?> đánh giá)
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form thêm bình luận (chỉ hiển thị khi đã đăng nhập) -->
+                <?php if (isset($_SESSION['user_id'])): ?>
+                    <?php
+                    $hasCommented = $db->hasUserCommentedOnBook($_SESSION['user_id'], $bookId);
+                    ?>
+                    <?php if (!$hasCommented): ?>
+                        <div class="add-comment-form mb-4">
+                            <h4>Viết đánh giá</h4>
+                            <form id="commentForm">
+                                <div class="row">
+                                    <div class="col-12 mb-3">
+                                        <label class="form-label">Đánh giá của bạn:</label>
+                                        <div class="rating-input">
+                                            <input type="radio" name="rating" value="5" id="star5">
+                                            <label for="star5"><i class="fas fa-star"></i></label>
+                                            <input type="radio" name="rating" value="4" id="star4">
+                                            <label for="star4"><i class="fas fa-star"></i></label>
+                                            <input type="radio" name="rating" value="3" id="star3">
+                                            <label for="star3"><i class="fas fa-star"></i></label>
+                                            <input type="radio" name="rating" value="2" id="star2">
+                                            <label for="star2"><i class="fas fa-star"></i></label>
+                                            <input type="radio" name="rating" value="1" id="star1">
+                                            <label for="star1"><i class="fas fa-star"></i></label>
+                                        </div>
+                                    </div>
+                                    <div class="col-12 mb-3">
+                                        <label for="commentContent" class="form-label">Nội dung bình luận:</label>
+                                        <textarea class="form-control" id="commentContent" name="content" rows="4"
+                                            placeholder="Chia sẻ cảm nhận của bạn về cuốn sách này..." required></textarea>
+                                    </div>
+                                    <div class="col-12">
+                                        <button type="submit" class="btn btn-primary">
+                                            <i class="fas fa-paper-plane"></i> Gửi đánh giá
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    <?php else: ?>
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i> Bạn đã đánh giá sách này rồi.
+                        </div>
+                    <?php endif; ?>
+                <?php else: ?>
+                    <div class="alert alert-warning">
+                        <i class="fas fa-sign-in-alt"></i>
+                        <a href="/DoAn_BookStore/view/auth/login.php">Đăng nhập</a> để viết đánh giá.
+                    </div>
+                <?php endif; ?>
+
+                <!-- Danh sách bình luận -->
+                <?php
+                $commentsData = $db->getCommentsByBookId($bookId, 1, 10);
+                $comments = $commentsData['comments'];
+                ?>
+
+                <div class="comments-list">
+                    <h4>Các đánh giá khác (<?php echo $commentsData['pagination']['total_records']; ?>)</h4>
+
+                    <?php if (!empty($comments)): ?>
+                        <div id="commentsList">
+                            <?php foreach ($comments as $comment): ?>
+                                <div class="comment-item" data-comment-id="<?php echo $comment['cmt_id']; ?>">
+                                    <div class="comment-header">
+                                        <div class="d-flex justify-content-between align-items-start">
+                                            <div>
+                                                <strong class="comment-author">
+                                                    <?php echo htmlspecialchars($comment['user_name'] ?: $comment['username']); ?>
+                                                </strong>
+                                                <div class="comment-rating">
+                                                    <?php
+                                                    if ($comment['vote'] > 0) {
+                                                        for ($i = 1; $i <= 5; $i++) {
+                                                            if ($i <= $comment['vote']) {
+                                                                echo '<i class="fas fa-star text-warning"></i>';
+                                                            } else {
+                                                                echo '<i class="far fa-star text-muted"></i>';
+                                                            }
+                                                        }
+                                                    }
+                                                    ?>
+                                                </div>
+                                                <small class="text-muted comment-date">
+                                                    <?php echo date('d/m/Y H:i', strtotime($comment['create_at'])); ?>
+                                                </small>
+                                            </div>
+
+                                            <!-- Menu cho comment của user hiện tại -->
+                                            <?php if (isset($_SESSION['user_id']) && $_SESSION['user_id'] == $comment['user_id']): ?>
+                                                <div class="dropdown">
+                                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                                                        data-bs-toggle="dropdown">
+                                                        <i class="fas fa-ellipsis-v"></i>
+                                                    </button>
+                                                    <ul class="dropdown-menu">
+                                                        <li>
+                                                            <a class="dropdown-item edit-comment-btn" href="#"
+                                                                data-comment-id="<?php echo $comment['cmt_id']; ?>">
+                                                                <i class="fas fa-edit"></i> Chỉnh sửa
+                                                            </a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item delete-comment-btn text-danger" href="#"
+                                                                data-comment-id="<?php echo $comment['cmt_id']; ?>">
+                                                                <i class="fas fa-trash"></i> Xóa
+                                                            </a>
+                                                        </li>
+                                                    </ul>
+                                                </div>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+
+                                    <div class="comment-content">
+                                        <p class="comment-text"><?php echo nl2br(htmlspecialchars($comment['content'])); ?></p>
+
+                                        <?php if (!empty($comment['image'])): ?>
+                                            <div class="comment-image">
+                                                <img src="../../images/comments/<?php echo htmlspecialchars($comment['image']); ?>"
+                                                    class="img-thumbnail" style="max-width: 200px;" alt="Hình ảnh đánh giá">
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+
+                        <!-- Pagination cho comments -->
+                        <?php if ($commentsData['pagination']['total_pages'] > 1): ?>
+                            <div class="comments-pagination mt-4">
+                                <nav>
+                                    <ul class="pagination justify-content-center">
+                                        <?php if ($commentsData['pagination']['has_previous']): ?>
+                                            <li class="page-item">
+                                                <a class="page-link" href="#"
+                                                    onclick="loadComments(<?php echo $commentsData['pagination']['current_page'] - 1; ?>)">
+                                                    Trước
+                                                </a>
+                                            </li>
+                                        <?php endif; ?>
+
+                                        <?php for ($i = 1; $i <= $commentsData['pagination']['total_pages']; $i++): ?>
+                                            <li
+                                                class="page-item <?php echo $i == $commentsData['pagination']['current_page'] ? 'active' : ''; ?>">
+                                                <a class="page-link" href="#" onclick="loadComments(<?php echo $i; ?>)">
+                                                    <?php echo $i; ?>
+                                                </a>
+                                            </li>
+                                        <?php endfor; ?>
+
+                                        <?php if ($commentsData['pagination']['has_next']): ?>
+                                            <li class="page-item">
+                                                <a class="page-link" href="#"
+                                                    onclick="loadComments(<?php echo $commentsData['pagination']['current_page'] + 1; ?>)">
+                                                    Sau
+                                                </a>
+                                            </li>
+                                        <?php endif; ?>
+                                    </ul>
+                                </nav>
+                            </div>
+                        <?php endif; ?>
+
+                    <?php else: ?>
+                        <div class="no-comments text-center py-4">
+                            <i class="fas fa-comments fa-3x text-muted mb-3"></i>
+                            <p class="text-muted">Chưa có đánh giá nào cho sách này.</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
         </div>
 
         <!-- Sách liên quan -->
@@ -577,6 +830,137 @@ $relatedBooks = $db->fetchAll(
                 isProcessing = false;
             }, 2000);
         });
+
+        // Comment functionality
+        document.addEventListener('DOMContentLoaded', function () {
+            // Handle comment form submission
+            const commentForm = document.getElementById('commentForm');
+            if (commentForm) {
+                commentForm.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    submitComment();
+                });
+            }
+
+            // Handle edit comment
+            document.addEventListener('click', function (e) {
+                if (e.target.classList.contains('edit-comment-btn') || e.target.closest('.edit-comment-btn')) {
+                    e.preventDefault();
+                    const btn = e.target.closest('.edit-comment-btn');
+                    const commentId = btn.getAttribute('data-comment-id');
+                    editComment(commentId);
+                }
+            });
+
+            // Handle delete comment
+            document.addEventListener('click', function (e) {
+                if (e.target.classList.contains('delete-comment-btn') || e.target.closest('.delete-comment-btn')) {
+                    e.preventDefault();
+                    const btn = e.target.closest('.delete-comment-btn');
+                    const commentId = btn.getAttribute('data-comment-id');
+                    deleteComment(commentId);
+                }
+            });
+        });
+
+        // Submit comment
+        function submitComment() {
+            const form = document.getElementById('commentForm');
+            const formData = new FormData();
+
+            const rating = form.querySelector('input[name="rating"]:checked');
+            const content = form.querySelector('#commentContent').value.trim();
+
+            if (!rating) {
+                showNotification('error', 'Vui lòng chọn số sao đánh giá');
+                return;
+            }
+
+            if (!content) {
+                showNotification('error', 'Vui lòng nhập nội dung bình luận');
+                return;
+            }
+
+            formData.append('action', 'add_comment');
+            formData.append('book_id', <?php echo $bookId; ?>);
+            formData.append('rating', rating.value);
+            formData.append('content', content);
+
+            const submitBtn = form.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang gửi...';
+
+            fetch('/DoAn_BookStore/view/detail/comment_handler.php', {
+                method: 'POST',
+                body: formData
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showNotification('success', data.message);
+                        // Reload page để hiển thị comment mới
+                        setTimeout(() => {
+                            location.reload();
+                        }, 1500);
+                    } else {
+                        showNotification('error', data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showNotification('error', 'Có lỗi xảy ra khi gửi đánh giá');
+                })
+                .finally(() => {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalText;
+                });
+        }
+
+        // Edit comment
+        function editComment(commentId) {
+            // Implement edit functionality if needed
+            showNotification('info', 'Tính năng chỉnh sửa đang được phát triển');
+        }
+
+        // Delete comment
+        function deleteComment(commentId) {
+            if (!confirm('Bạn có chắc chắn muốn xóa đánh giá này?')) {
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('action', 'delete_comment');
+            formData.append('comment_id', commentId);
+
+            fetch('/DoAn_BookStore/view/detail/comment_handler.php', {
+                method: 'POST',
+                body: formData
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showNotification('success', data.message);
+                        // Remove comment from DOM
+                        const commentElement = document.querySelector(`[data-comment-id="${commentId}"]`);
+                        if (commentElement) {
+                            commentElement.remove();
+                        }
+                    } else {
+                        showNotification('error', data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showNotification('error', 'Có lỗi xảy ra khi xóa đánh giá');
+                });
+        }
+
+        // Load comments (for pagination)
+        function loadComments(page) {
+            // Implement if you want AJAX pagination
+            window.location.href = `?id=<?php echo $bookId; ?>&comment_page=${page}#comments-section`;
+        }
     </script>
 
     <style>
@@ -633,6 +1017,147 @@ $relatedBooks = $db->fetchAll(
             transform: translateY(-1px);
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
             transition: all 0.2s ease;
+        }
+
+        /* Comment Section Styles */
+        .comments-section {
+            background: #f8f9fa;
+            padding: 2rem;
+            border-radius: 10px;
+            margin-top: 2rem;
+        }
+
+        .rating-summary {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .avg-rating {
+            text-align: center;
+        }
+
+        .rating-score {
+            font-size: 3rem;
+            font-weight: bold;
+            color: #ffc107;
+        }
+
+        .rating-stars-large i {
+            font-size: 1.5rem;
+            color: #ffc107;
+            margin: 0 2px;
+        }
+
+        .rating-count {
+            color: #6c757d;
+            margin-top: 0.5rem;
+        }
+
+        /* Rating Input */
+        .rating-input {
+            display: flex;
+            flex-direction: row-reverse;
+            justify-content: flex-end;
+            gap: 5px;
+        }
+
+        .rating-input input[type="radio"] {
+            display: none;
+        }
+
+        .rating-input label {
+            cursor: pointer;
+            font-size: 1.5rem;
+            color: #ddd;
+            transition: color 0.2s;
+        }
+
+        .rating-input label:hover,
+        .rating-input label:hover~label,
+        .rating-input input[type="radio"]:checked~label {
+            color: #ffc107;
+        }
+
+        /* Add Comment Form */
+        .add-comment-form {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Comments List */
+        .comments-list {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .comment-item {
+            border-bottom: 1px solid #eee;
+            padding: 1.5rem 0;
+        }
+
+        .comment-item:last-child {
+            border-bottom: none;
+        }
+
+        .comment-header {
+            margin-bottom: 1rem;
+        }
+
+        .comment-author {
+            color: #2c3e50;
+            font-size: 1.1rem;
+        }
+
+        .comment-rating {
+            margin: 0.25rem 0;
+        }
+
+        .comment-rating i {
+            font-size: 0.9rem;
+        }
+
+        .comment-date {
+            font-size: 0.85rem;
+        }
+
+        .comment-content {
+            color: #495057;
+            line-height: 1.6;
+        }
+
+        .comment-text {
+            margin-bottom: 1rem;
+        }
+
+        .comment-image img {
+            border-radius: 4px;
+            margin-top: 0.5rem;
+        }
+
+        /* No Comments */
+        .no-comments {
+            color: #6c757d;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .comments-section {
+                padding: 1rem;
+            }
+
+            .rating-score {
+                font-size: 2rem;
+            }
+
+            .rating-stars-large i {
+                font-size: 1.2rem;
+            }
         }
     </style>
 </body>

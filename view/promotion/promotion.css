@@ -1,0 +1,667 @@
+/* Global Styles */
+:root {
+    --primary-color: #ff6b35;
+    --secondary-color: #f7931e;
+    --accent-color: #ffd700;
+    --success-color: #28a745;
+    --danger-color: #dc3545;
+    --dark-color: #2c3e50;
+    --light-color: #f8f9fa;
+    --gradient-bg: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.6;
+    color: var(--dark-color);
+}
+
+/* Hero Banner */
+.hero-banner {
+    background: var(--gradient-bg);
+    color: white;
+    padding: 4rem 0;
+    position: relative;
+    overflow: hidden;
+    min-height: 500px;
+}
+
+.hero-banner::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+    opacity: 0.1;
+}
+
+.banner-content {
+    position: relative;
+    z-index: 2;
+}
+
+.banner-title {
+    font-size: 3.5rem;
+    font-weight: 900;
+    margin-bottom: 1rem;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.banner-title .highlight {
+    color: var(--accent-color);
+    text-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+}
+
+.banner-subtitle {
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+    opacity: 0.9;
+}
+
+.banner-description {
+    font-size: 1.1rem;
+    margin-bottom: 2rem;
+    opacity: 0.8;
+}
+
+.voucher-code-display {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 15px;
+    padding: 1rem;
+    margin: 2rem 0;
+    backdrop-filter: blur(10px);
+}
+
+.code-label {
+    display: block;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+    opacity: 0.8;
+}
+
+.voucher-code {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: white;
+    color: var(--primary-color);
+    padding: 0.8rem 1.5rem;
+    border-radius: 25px;
+    font-size: 1.2rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.voucher-code:hover {
+    background: var(--accent-color);
+    color: var(--dark-color);
+    border-color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+.min-order {
+    font-size: 0.9rem;
+    opacity: 0.8;
+    margin-bottom: 2rem;
+}
+
+.banner-actions {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.banner-actions .btn {
+    border-radius: 25px;
+    padding: 0.8rem 2rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: all 0.3s ease;
+}
+
+.banner-actions .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+/* Banner Image */
+.banner-image {
+    position: relative;
+    height: 400px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.discount-badge {
+    background: white;
+    color: var(--primary-color);
+    border-radius: 50%;
+    width: 200px;
+    height: 200px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    animation: pulse 2s infinite;
+}
+
+.discount-percent {
+    font-size: 3rem;
+    line-height: 1;
+}
+
+.discount-text {
+    font-size: 1.2rem;
+    margin-top: 0.5rem;
+}
+
+.floating-elements {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+
+.floating-icon {
+    position: absolute;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: white;
+    animation: float 3s ease-in-out infinite;
+}
+
+.floating-icon:nth-child(1) {
+    top: 10%;
+    left: 10%;
+    animation-delay: 0s;
+}
+
+.floating-icon:nth-child(2) {
+    top: 20%;
+    right: 15%;
+    animation-delay: 1s;
+}
+
+.floating-icon:nth-child(3) {
+    bottom: 15%;
+    left: 20%;
+    animation-delay: 2s;
+}
+
+/* Countdown Section */
+.countdown-section {
+    background: var(--dark-color);
+    color: white;
+    padding: 2rem 0;
+}
+
+.countdown-container {
+    text-align: center;
+}
+
+.countdown-container h3 {
+    margin-bottom: 2rem;
+    font-size: 1.5rem;
+}
+
+.countdown-timer {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    flex-wrap: wrap;
+}
+
+.time-unit {
+    background: var(--primary-color);
+    border-radius: 15px;
+    padding: 1.5rem;
+    min-width: 120px;
+    text-align: center;
+}
+
+.time-value {
+    display: block;
+    font-size: 2.5rem;
+    font-weight: bold;
+    line-height: 1;
+}
+
+.time-label {
+    display: block;
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+    opacity: 0.8;
+}
+
+/* Voucher Checker */
+.voucher-checker-section {
+    padding: 3rem 0;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+.voucher-checker-card {
+    background: white;
+    border-radius: 20px;
+    padding: 3rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(255, 107, 53, 0.1);
+}
+
+.voucher-checker-card h3 {
+    color: var(--primary-color);
+    margin-bottom: 2rem;
+    font-weight: 700;
+}
+
+.voucher-result {
+    border-radius: 15px;
+    overflow: hidden;
+}
+
+.voucher-result-details {
+    background: rgba(40, 167, 69, 0.1);
+    padding: 1rem;
+    border-radius: 10px;
+    margin-top: 1rem;
+}
+
+/* Vouchers Section */
+.vouchers-section {
+    padding: 3rem 0;
+}
+
+.section-title {
+    color: var(--primary-color);
+    font-weight: 700;
+    font-size: 2.5rem;
+    margin-bottom: 3rem;
+}
+
+/* Voucher Cards */
+.voucher-card {
+    background: white;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.voucher-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+    border-color: var(--primary-color);
+}
+
+.voucher-header {
+    background: var(--gradient-bg);
+    color: white;
+    padding: 1.5rem;
+    text-align: center;
+    position: relative;
+}
+
+.voucher-discount {
+    font-size: 2.5rem;
+    font-weight: bold;
+    line-height: 1;
+}
+
+.voucher-type {
+    font-size: 0.9rem;
+    opacity: 0.9;
+    margin-top: 0.5rem;
+}
+
+.voucher-body {
+    padding: 1.5rem;
+    flex-grow: 1;
+}
+
+.voucher-name {
+    color: var(--primary-color);
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+
+.voucher-description {
+    color: #6c757d;
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+}
+
+.voucher-details {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 1rem;
+}
+
+.detail-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+.detail-item:last-child {
+    margin-bottom: 0;
+}
+
+.detail-item i {
+    color: var(--primary-color);
+    width: 16px;
+}
+
+.voucher-footer {
+    padding: 1rem 1.5rem;
+    background: #f8f9fa;
+    border-top: 1px solid #dee2e6;
+}
+
+.voucher-code-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    background: white;
+    border-radius: 10px;
+    padding: 0.8rem;
+    border: 2px dashed var(--primary-color);
+}
+
+.voucher-code-text {
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    color: var(--primary-color);
+    font-size: 1.1rem;
+}
+
+.btn-copy {
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 35px;
+    height: 35px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.btn-copy:hover {
+    background: var(--secondary-color);
+    transform: scale(1.1);
+}
+
+.voucher-actions {
+    text-align: center;
+}
+
+.usage-progress {
+    padding: 0 1.5rem 1rem;
+    background: #f8f9fa;
+}
+
+.progress {
+    height: 6px;
+    border-radius: 3px;
+    background: #e9ecef;
+    margin-bottom: 0.5rem;
+}
+
+.progress-bar {
+    background: var(--gradient-bg);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.usage-text {
+    color: #6c757d;
+    font-size: 0.8rem;
+}
+
+/* Newsletter Section */
+.newsletter-section {
+    background: var(--gradient-bg);
+    border-radius: 20px;
+    overflow: hidden;
+}
+
+.newsletter-card {
+    padding: 3rem;
+    color: white;
+}
+
+.newsletter-card h3 {
+    margin-bottom: 1rem;
+}
+
+.subscribed-status {
+    text-align: center;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 15px;
+    padding: 1rem;
+    backdrop-filter: blur(10px);
+}
+
+/* No Vouchers */
+.no-vouchers {
+    background: white;
+    border-radius: 20px;
+    padding: 4rem 2rem;
+    margin: 2rem 0;
+}
+
+/* Animations */
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.05);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translateY(0px);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.voucher-card {
+    animation: fadeInUp 0.6s ease-out;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .banner-title {
+        font-size: 2.5rem;
+    }
+
+    .banner-actions {
+        justify-content: center;
+    }
+
+    .banner-actions .btn {
+        flex: 1;
+        min-width: 200px;
+    }
+
+    .countdown-timer {
+        gap: 1rem;
+    }
+
+    .time-unit {
+        min-width: 80px;
+        padding: 1rem;
+    }
+
+    .time-value {
+        font-size: 1.8rem;
+    }
+
+    .voucher-checker-card {
+        padding: 2rem 1rem;
+    }
+
+    .newsletter-card {
+        padding: 2rem;
+        text-align: center;
+    }
+
+    .discount-badge {
+        width: 150px;
+        height: 150px;
+    }
+
+    .discount-percent {
+        font-size: 2rem;
+    }
+
+    .floating-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 1rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .hero-banner {
+        padding: 2rem 0;
+    }
+
+    .banner-title {
+        font-size: 2rem;
+    }
+
+    .section-title {
+        font-size: 2rem;
+    }
+
+    .voucher-checker-card {
+        padding: 1.5rem;
+    }
+
+    .newsletter-card {
+        padding: 1.5rem;
+    }
+}
+
+/* Toast Styles */
+.toast {
+    border-radius: 10px;
+    border: none;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+}
+
+.toast-header {
+    border-bottom: none;
+    background: transparent;
+    font-weight: 600;
+}
+
+/* Custom Form Controls */
+.form-control {
+    border-radius: 10px;
+    border: 2px solid #e9ecef;
+    padding: 0.75rem 1rem;
+    transition: all 0.3s ease;
+}
+
+.form-control:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(255, 107, 53, 0.25);
+}
+
+.btn {
+    border-radius: 10px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.btn-primary {
+    background: var(--gradient-bg);
+    border: none;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(255, 107, 53, 0.3);
+}
+
+/* Loading States */
+.btn.loading {
+    position: relative;
+    color: transparent;
+}
+
+.btn.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

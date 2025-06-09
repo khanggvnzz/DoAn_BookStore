@@ -70,14 +70,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     switch ($action) {
         case 'add_book':
             try {
+                $imageName = '';
+
+                // Handle image upload
+                if (isset($_FILES['book_image']) && $_FILES['book_image']['error'] === UPLOAD_ERR_OK) {
+                    $uploadDir = __DIR__ . '/../../images/books/';
+                    if (!is_dir($uploadDir)) {
+                        mkdir($uploadDir, 0755, true);
+                    }
+
+                    $fileInfo = pathinfo($_FILES['book_image']['name']);
+                    $extension = strtolower($fileInfo['extension']);
+                    $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+
+                    if (in_array($extension, $allowedExtensions)) {
+                        // Generate unique filename
+                        $imageName = uniqid('book_') . '_' . time() . '.' . $extension;
+                        $uploadPath = $uploadDir . $imageName;
+
+                        if (!move_uploaded_file($_FILES['book_image']['tmp_name'], $uploadPath)) {
+                            $error = "Lỗi khi upload ảnh";
+                            break;
+                        }
+                    } else {
+                        $error = "Chỉ cho phép upload file: jpg, jpeg, png, gif, webp";
+                        break;
+                    }
+                } else {
+                    $error = "Vui lòng chọn ảnh cho sách";
+                    break;
+                }
+
+                $category_id = $database->getCategoryIdbyName($_POST['category']);
+
                 $bookData = [
                     'title' => trim($_POST['title']),
                     'author' => trim($_POST['author']),
                     'category' => trim($_POST['category']),
-                    'price' => floatval($_POST['price']), // Giữ nguyên giá nhập vào
+                    'price' => floatval($_POST['price']),
                     'stock' => intval($_POST['stock']),
                     'description' => trim($_POST['description']),
-                    'image' => trim($_POST['image_url']),
+                    'category_id' => $category_id['id'],
+                    'image' => $imageName,
                     'created_at' => date('Y-m-d H:i:s')
                 ];
 
@@ -86,23 +120,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $message = "Thêm sách thành công!";
                 } else {
                     $error = "Lỗi khi thêm sách";
+                    // Delete uploaded image if database insert failed
+                    if ($imageName && file_exists($uploadDir . $imageName)) {
+                        unlink($uploadDir . $imageName);
+                    }
                 }
             } catch (Exception $e) {
                 $error = "Lỗi khi thêm sách: " . $e->getMessage();
+                // Delete uploaded image if error occurred
+                if (isset($imageName) && $imageName && file_exists($uploadDir . $imageName)) {
+                    unlink($uploadDir . $imageName);
+                }
             }
             break;
 
         case 'update_book':
             try {
                 $id = intval($_POST['book_id']);
+                $imageName = $_POST['current_image']; // Keep current image by default
+
+                // Handle image upload if new image is provided
+                if (isset($_FILES['book_image']) && $_FILES['book_image']['error'] === UPLOAD_ERR_OK) {
+                    $uploadDir = __DIR__ . '/../../images/books/';
+                    if (!is_dir($uploadDir)) {
+                        mkdir($uploadDir, 0755, true);
+                    }
+
+                    $fileInfo = pathinfo($_FILES['book_image']['name']);
+                    $extension = strtolower($fileInfo['extension']);
+                    $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+
+                    if (in_array($extension, $allowedExtensions)) {
+                        // Generate unique filename
+                        $newImageName = uniqid('book_') . '_' . time() . '.' . $extension;
+                        $uploadPath = $uploadDir . $newImageName;
+
+                        if (move_uploaded_file($_FILES['book_image']['tmp_name'], $uploadPath)) {
+                            // Delete old image if exists
+                            if ($imageName && file_exists($uploadDir . $imageName)) {
+                                unlink($uploadDir . $imageName);
+                            }
+                            $imageName = $newImageName;
+                        } else {
+                            $error = "Lỗi khi upload ảnh mới";
+                            break;
+                        }
+                    } else {
+                        $error = "Chỉ cho phép upload file: jpg, jpeg, png, gif, webp";
+                        break;
+                    }
+                }
+
                 $bookData = [
                     'title' => trim($_POST['title']),
                     'author' => trim($_POST['author']),
                     'category' => trim($_POST['category']),
-                    'price' => floatval($_POST['price']), // Giữ nguyên giá nhập vào
+                    'price' => floatval($_POST['price']),
                     'stock' => intval($_POST['stock']),
                     'description' => trim($_POST['description']),
-                    'image' => trim($_POST['image_url']),
+                    'image' => $imageName,
                 ];
 
                 $result = $database->update('books', $bookData, 'id = :id', ['id' => $id]);
@@ -118,9 +194,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         case 'delete_book':
             try {
-                $id = intval($_POST['book_id']);
-                $result = $database->delete('books', 'id = :id', ['id' => $id]);
+                $book_Id = intval($_POST['book_id']);
+
+                // Get book info to delete image
+                $book = $database->fetch("SELECT * FROM books WHERE id = :id", ['id' => $book_Id]);
+
+                $result = $database->delete('books', 'id = :id', ['id' => $book_Id]);
                 if ($result) {
+                    // Delete image file if exists
+                    if ($book && $book['image']) {
+                        $imagePath = __DIR__ . '/../../images/books/' . $book['image'];
+                        if (file_exists($imagePath)) {
+                            unlink($imagePath);
+                        }
+                    }
                     $message = "Xóa sách thành công!";
                 } else {
                     $error = "Lỗi khi xóa sách";
@@ -360,7 +447,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         case 'delete_voucher':
             try {
                 $voucherId = intval($_POST['voucher_id']);
-                var_dump($voucherId);
 
                 $result = $database->deleteVoucher($voucherId);
 
@@ -447,6 +533,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $books = $database->fetchAll("SELECT * FROM books ORDER BY title");
 $users = $database->fetchAll("SELECT user_id, username, name, email, permission FROM users ORDER BY username");
 $categories = $database->fetchAll("SELECT DISTINCT category FROM books WHERE category IS NOT NULL AND category != '' ORDER BY category");
+$categoriesFromTable = $database->fetchAll("SELECT id, name FROM categories ORDER BY name");
+
 
 // Get banner data
 $allBanners = getBannerFiles();
@@ -959,8 +1047,8 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                                         <tr>
                                                             <td>
                                                                 <code class="bg-success bg-opacity-10 text-success p-1 rounded">
-                                                                                                                                                                                                                                                                                                                                                                    <?php echo htmlspecialchars($voucher['code']); ?>
-                                                                                                                                                                                                                                                                                                                                                                </code>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    <?php echo htmlspecialchars($voucher['code']); ?>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                </code>
                                                             </td>
                                                             <td><?php echo htmlspecialchars($voucher['name']); ?></td>
                                                             <td>
@@ -1074,8 +1162,8 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                                         <tr>
                                                             <td>
                                                                 <code class="bg-warning bg-opacity-10 text-warning p-1 rounded">
-                                                                                                                                                                                                                                                                                                                                                                    <?php echo htmlspecialchars($voucher['code']); ?>
-                                                                                                                                                                                                                                                                                                                                                                </code>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    <?php echo htmlspecialchars($voucher['code']); ?>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                </code>
                                                             </td>
                                                             <td><?php echo htmlspecialchars($voucher['name']); ?></td>
                                                             <td>
@@ -1175,8 +1263,8 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                                         <td>
                                                             <code
                                                                 class="<?php echo $voucher['is_active'] ? 'bg-light' : 'bg-warning bg-opacity-10'; ?> p-1 rounded">
-                                                                                                                                                                                                                <?php echo htmlspecialchars($voucher['code']); ?>
-                                                                                                                                                                                                            </code>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                <?php echo htmlspecialchars($voucher['code']); ?>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                            </code>
                                                         </td>
                                                         <td><?php echo htmlspecialchars($voucher['name']); ?></td>
                                                         <td>
@@ -1353,8 +1441,8 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                                                     ($order['status'] === 'confirmed' ? 'bg-success bg-opacity-10 text-success' :
                                                                         'bg-danger bg-opacity-10 text-danger');
                                                                 ?>">
-                                                                                                                                #<?php echo $order['order_id']; ?>
-                                                                                                                            </code>
+                                                                                                                                                                                                                                                                                                                                                                                #<?php echo $order['order_id']; ?>
+                                                                                                                                                                                                                                                                                                                                                                            </code>
                                                             </td>
                                                             <td>
                                                                 <span class="badge bg-secondary">
@@ -1511,8 +1599,8 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                                                 <td>
                                                                     <code
                                                                         class="bg-warning bg-opacity-10 text-warning p-1 rounded">
-                                                                                                                                                                                                #<?php echo $order['order_id']; ?>
-                                                                                                                                                                                            </code>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                #<?php echo $order['order_id']; ?>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            </code>
                                                                 </td>
                                                                 <td>
                                                                     <span class="badge bg-secondary">
@@ -1647,8 +1735,8 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                                                 <td>
                                                                     <code
                                                                         class="bg-success bg-opacity-10 text-success p-1 rounded">
-                                                                                                                                                                                                #<?php echo $order['order_id']; ?>
-                                                                                                                                                                                            </code>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                #<?php echo $order['order_id']; ?>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            </code>
                                                                 </td>
                                                                 <td>
                                                                     <span class="badge bg-secondary">
@@ -1778,8 +1866,8 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                                                 <td>
                                                                     <code
                                                                         class="bg-danger bg-opacity-10 text-danger p-1 rounded">
-                                                                                                                                                                                                #<?php echo $order['order_id']; ?>
-                                                                                                                                                                                            </code>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                #<?php echo $order['order_id']; ?>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            </code>
                                                                 </td>
                                                                 <td>
                                                                     <span class="badge bg-secondary">
@@ -1815,23 +1903,22 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                                                         <?php echo ucfirst($order['pay_method']); ?>
                                                                     </span>
                                                                 </td>
-                                                                <td>
-                                                                    <?php if ($order['voucher_id']): ?>
-                                                                        <?php
-                                                                        $voucher = $database->getVoucherById($order['voucher_id']);
-                                                                        if ($voucher):
-                                                                            ?>
-                                                                            <span class="badge bg-secondary"
-                                                                                title="<?php echo htmlspecialchars($voucher['name']); ?>">
-                                                                                <?php echo htmlspecialchars($voucher['code']); ?>
-                                                                            </span>
-                                                                        <?php else: ?>
-                                                                            <span class="badge bg-secondary">Voucher
-                                                                                #<?php echo $order['voucher_id']; ?></span>
-                                                                        <?php endif; ?>
+                                                                <?php if ($order['voucher_id']): ?>
+                                                                    <?php
+                                                                    $voucher = $database->getVoucherById($order['voucher_id']);
+                                                                    if ($voucher):
+                                                                        ?>
+                                                                        <span class="badge bg-secondary"
+                                                                            title="<?php echo htmlspecialchars($voucher['name']); ?>">
+                                                                            <?php echo htmlspecialchars($voucher['code']); ?>
+                                                                        </span>
                                                                     <?php else: ?>
-                                                                        <span class="text-muted">-</span>
+                                                                        <span class="badge bg-secondary">Voucher
+                                                                            #<?php echo $order['voucher_id']; ?></span>
                                                                     <?php endif; ?>
+                                                                <?php else: ?>
+                                                                    <span class="text-muted">-</span>
+                                                                <?php endif; ?>
                                                                 </td>
                                                                 <td>
                                                                     <?php if (!empty($order['note'])): ?>
@@ -1847,15 +1934,7 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                                                 <td>
                                                                     <?php echo date('d/m/Y H:i', strtotime($order['created_at'])); ?>
                                                                 </td>
-                                                                <td>
-                                                                    <button class="btn btn-outline-info btn-sm"
-                                                                        onclick="viewOrderDetails(<?php echo $order['order_id']; ?>)"
-                                                                        title="Xem chi tiết">
-                                                                        <i class="fas fa-eye"></i>
-                                                                    </button>
-                                                                </td>
-                                                            </tr>
-                                                        <?php endforeach; ?>
+                                                            <?php endforeach; ?>
                                                     </tbody>
                                                 </table>
                                             </div>
@@ -1878,7 +1957,7 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                     <h5 class="modal-title">Thêm sách mới</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <form method="POST">
+                <form method="POST" enctype="multipart/form-data">
                     <div class="modal-body">
                         <input type="hidden" name="action" value="add_book">
                         <div class="row">
@@ -1899,7 +1978,14 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                             <div class="col-md-4">
                                 <div class="mb-3">
                                     <label class="form-label">Danh mục</label>
-                                    <input type="text" class="form-control" name="category" required>
+                                    <select class="form-select" name="category" required>
+                                        <option value="">-- Chọn danh mục --</option>
+                                        <?php foreach ($categoriesFromTable as $category): ?>
+                                            <option value="<?php echo htmlspecialchars($category['name']); ?>">
+                                                <?php echo htmlspecialchars($category['name']); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
                                 </div>
                             </div>
                             <div class="col-md-4">
@@ -1919,8 +2005,12 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                             </div>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">URL hình ảnh</label>
-                            <input type="url" class="form-control" name="image_url">
+                            <label class="form-label">Ảnh sách</label>
+                            <input type="file" class="form-control" name="book_image" accept="image/*" required>
+                            <div class="form-text">
+                                Chỉ chấp nhận file: JPG, JPEG, PNG, GIF, WEBP<br>
+                                Khuyến nghị kích thước: 300x400px hoặc tỷ lệ 3:4
+                            </div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Mô tả</label>
@@ -1944,10 +2034,12 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                     <h5 class="modal-title">Sửa thông tin sách</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <form method="POST">
+                <form method="POST" enctype="multipart/form-data">
                     <div class="modal-body">
                         <input type="hidden" name="action" value="update_book">
                         <input type="hidden" name="book_id" id="edit_book_id">
+                        <input type="hidden" name="current_image" id="edit_current_image">
+
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="mb-3">
@@ -1966,7 +2058,14 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                             <div class="col-md-4">
                                 <div class="mb-3">
                                     <label class="form-label">Danh mục</label>
-                                    <input type="text" class="form-control" name="category" id="edit_category" required>
+                                    <select class="form-select" name="category" id="edit_category" required>
+                                        <option value="">-- Chọn danh mục --</option>
+                                        <?php foreach ($categoriesFromTable as $category): ?>
+                                            <option value="<?php echo htmlspecialchars($category['name']); ?>">
+                                                <?php echo htmlspecialchars($category['name']); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
                                 </div>
                             </div>
                             <div class="col-md-4">
@@ -1985,10 +2084,25 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Current Image Display -->
                         <div class="mb-3">
-                            <label class="form-label">URL hình ảnh</label>
-                            <input type="url" class="form-control" name="image_url" id="edit_image_url">
+                            <label class="form-label">Ảnh hiện tại</label>
+                            <div id="current_image_preview" class="mb-2">
+                                <!-- Current image will be displayed here -->
+                            </div>
                         </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Thay đổi ảnh sách (tùy chọn)</label>
+                            <input type="file" class="form-control" name="book_image" accept="image/*">
+                            <div class="form-text">
+                                Để trống nếu không muốn thay đổi ảnh hiện tại<br>
+                                Chỉ chấp nhận file: JPG, JPEG, PNG, GIF, WEBP<br>
+                                Khuyến nghị kích thước: 300x400px hoặc tỷ lệ 3:4
+                            </div>
+                        </div>
+
                         <div class="mb-3">
                             <label class="form-label">Mô tả</label>
                             <textarea class="form-control" name="description" id="edit_description" rows="3"></textarea>
@@ -2339,8 +2453,28 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
             document.getElementById('edit_category').value = book.category;
             document.getElementById('edit_price').value = book.price;
             document.getElementById('edit_stock').value = book.stock;
-            document.getElementById('edit_image_url').value = book.image || '';
             document.getElementById('edit_description').value = book.description || '';
+            document.getElementById('edit_current_image').value = book.image || '';
+
+            // Display current image
+            const imagePreview = document.getElementById('current_image_preview');
+            if (book.image) {
+                imagePreview.innerHTML = `
+                    <img src="/DoAn_BookStore/images/books/${book.image}" 
+                         alt="Ảnh hiện tại" 
+                         class="img-thumbnail" 
+                         style="max-width: 150px; max-height: 200px;">
+                    <p class="text-muted mt-1 mb-0">
+                        <small>Tên file: ${book.image}</small>
+                    </p>
+                `;
+            } else {
+                imagePreview.innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> Không có ảnh hiện tại
+                    </div>
+                `;
+            }
 
             const modal = new bootstrap.Modal(document.getElementById('editBookModal'));
             modal.show();
@@ -2433,265 +2567,6 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
         }
 
         // Voucher functions
-        function editVoucher(voucher) {
-            saveActiveTab('vouchers');
-
-            document.getElementById('edit_voucher_id').value = voucher.voucher_id;
-            document.getElementById('edit_voucher_code_display').value = voucher.code;
-            document.getElementById('edit_voucher_name').value = voucher.name;
-            document.getElementById('edit_voucher_description').value = voucher.description || '';
-            document.getElementById('edit_voucher_min_amount').value = voucher.min_order_amount;
-            document.getElementById('edit_voucher_discount').value = voucher.discount_percent;
-            document.getElementById('edit_voucher_quantity').value = voucher.quantity;
-            document.getElementById('edit_voucher_active').checked = voucher.is_active == 1;
-            document.getElementById('edit_voucher_expires').value = voucher.expires_at || '';
-
-            const modal = new bootstrap.Modal(document.getElementById('editVoucherModal'));
-            modal.show();
-        }
-
-        function deleteVoucher(voucherId, name) {
-            if (confirm(`Bạn có chắc muốn xóa voucher "${name}"?`)) {
-                saveActiveTab('vouchers');
-                document.getElementById('delete_voucher_id').value = voucherId;
-                document.getElementById('deleteVoucherForm').submit();
-            }
-        }
-
-        function toggleVoucherStatus(voucherId, name, currentStatus) {
-            const action = currentStatus ? 'vô hiệu hóa' : 'kích hoạt';
-            if (confirm(`Bạn có chắc muốn ${action} voucher "${name}"?`)) {
-                saveActiveTab('vouchers');
-                document.getElementById('toggle_voucher_id').value = voucherId;
-                document.getElementById('toggleVoucherForm').submit();
-            }
-        }
-
-        // Order functions
-        function viewOrderDetails(orderId) {
-            saveActiveTab('orders');
-            // Redirect to order details page
-            window.location.href = '/DoAn_BookStore/view/admin/order_details.php?order_id=' + orderId;
-        }
-
-        function approveOrder(orderId) {
-            if (confirm('Bạn có chắc muốn duyệt đơn hàng này?')) {
-                saveActiveTab('orders');
-                document.getElementById('approve_order_id').value = orderId;
-                document.getElementById('approveOrderForm').submit();
-            }
-        }
-
-        function cancelOrder(orderId) {
-            if (confirm('Bạn có chắc muốn hủy đơn hàng này?')) {
-                saveActiveTab('orders');
-                document.getElementById('cancel_order_id').value = orderId;
-                document.getElementById('cancelOrderForm').submit();
-            }
-        }
-
-        function showProductDetails(productString) {
-            // Show modal
-            const modal = new bootstrap.Modal(document.getElementById('productDetailsModal'));
-
-            // Show loading state
-            document.getElementById('product-detail-content').innerHTML = `
-                <div class="text-center">
-                    <i class="fas fa-spinner fa-spin fa-2x"></i>
-                    <p class="mt-2">Đang tải thông tin...</p>
-                </div>
-            `;
-
-            modal.show();
-
-            // Parse product string and display
-            setTimeout(() => {
-                try {
-                    const products = productString.split(',');
-                    let html = '<div class="table-responsive"><table class="table table-striped"><thead><tr><th>ID Sách</th><th>Số lượng</th></tr></thead><tbody>';
-
-                    products.forEach(product => {
-                        const parts = product.split('*');
-                        if (parts.length === 2) {
-                            html += `<tr><td>Sách #${parts[0]}</td><td>${parts[1]}</td></tr>`;
-                        }
-                    });
-
-                    html += '</tbody></table></div>';
-                    document.getElementById('product-detail-content').innerHTML = html;
-                } catch (e) {
-                    document.getElementById('product-detail-content').innerHTML = `
-                        <div class="alert alert-warning">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            Không thể phân tích chuỗi sản phẩm: ${productString}
-                        </div>
-                    `;
-                }
-            }, 500);
-        }
-
-        // Save and restore active tab
-        function saveActiveTab(tabId) {
-            localStorage.setItem('adminActiveTab', tabId);
-        }
-
-        function restoreActiveTab() {
-            const savedTab = localStorage.getItem('adminActiveTab');
-            if (savedTab) {
-                const tabElement = document.querySelector(`[href="#${savedTab}"]`);
-                if (tabElement) {
-                    const tab = new bootstrap.Tab(tabElement);
-                    tab.show();
-
-                    // Special handling for orders tab
-                    if (savedTab === 'orders') {
-                        const savedOrderSection = localStorage.getItem('adminActiveOrderSection') || 'all';
-                        setTimeout(() => {
-                            showOrdersByStatus(savedOrderSection);
-                        }, 100);
-                    }
-                }
-            }
-        }
-
-        // Save order section state
-        function saveOrderSection(section) {
-            localStorage.setItem('adminActiveOrderSection', section);
-        }
-
-        // Update showOrdersByStatus function to save state
-        function showOrdersByStatus(status) {
-            // Save current section
-            saveOrderSection(status);
-
-            // Hide all order sections
-            document.querySelectorAll('.order-section').forEach(section => {
-                section.style.display = 'none';
-            });
-
-            // Show selected section
-            const sectionId = status + '-orders';
-            const section = document.getElementById(sectionId);
-            if (section) {
-                section.style.display = 'block';
-            }
-
-            // Update button states
-            document.querySelectorAll('.btn-group .btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-
-            // Find and activate the correct button
-            const buttons = document.querySelectorAll('.btn-group .btn');
-            buttons.forEach(btn => {
-                if (btn.textContent.includes('Tất cả') && status === 'all') btn.classList.add('active');
-                else if (btn.textContent.includes('Chờ duyệt') && status === 'pending') btn.classList.add('active');
-                else if (btn.textContent.includes('Đã duyệt') && status === 'confirmed') btn.classList.add('active');
-                else if (btn.textContent.includes('Đã hủy') && status === 'cancelled') btn.classList.add('active');
-            });
-        }
-
-        // Update all edit functions to save current tab
-        function editBook(book) {
-            saveActiveTab('books');
-
-            document.getElementById('edit_book_id').value = book.id;
-            document.getElementById('edit_title').value = book.title;
-            document.getElementById('edit_author').value = book.author;
-            document.getElementById('edit_category').value = book.category;
-            document.getElementById('edit_price').value = book.price;
-            document.getElementById('edit_stock').value = book.stock;
-            document.getElementById('edit_image_url').value = book.image || '';
-            document.getElementById('edit_description').value = book.description || '';
-
-            const modal = new bootstrap.Modal(document.getElementById('editBookModal'));
-            modal.show();
-        }
-
-        function deleteBook(id, title) {
-            if (confirm(`Bạn có chắc muốn xóa sách "${title}"?`)) {
-                saveActiveTab('books');
-
-                // Create delete form if not exists
-                let deleteForm = document.getElementById('deleteBookForm');
-                if (!deleteForm) {
-                    deleteForm = document.createElement('form');
-                    deleteForm.id = 'deleteBookForm';
-                    deleteForm.method = 'POST';
-                    deleteForm.style.display = 'none';
-
-                    const actionInput = document.createElement('input');
-                    actionInput.type = 'hidden';
-                    actionInput.name = 'action';
-                    actionInput.value = 'delete_book';
-
-                    const idInput = document.createElement('input');
-                    idInput.type = 'hidden';
-                    idInput.name = 'book_id';
-                    idInput.id = 'delete_book_id';
-
-                    deleteForm.appendChild(actionInput);
-                    deleteForm.appendChild(idInput);
-                    document.body.appendChild(deleteForm);
-                }
-
-                document.getElementById('delete_book_id').value = id;
-                deleteForm.submit();
-            }
-        }
-
-        function editUser(user) {
-            saveActiveTab('users');
-
-            document.getElementById('edit_user_id').value = user.user_id;
-            document.getElementById('edit_username').value = user.username;
-            document.getElementById('edit_email').value = user.email;
-            document.getElementById('edit_permission').value = user.permission;
-
-            const modal = new bootstrap.Modal(document.getElementById('editUserModal'));
-            modal.show();
-        }
-
-        function deleteUser(id, username) {
-            if (confirm(`Bạn có chắc muốn xóa người dùng "${username}"?`)) {
-                saveActiveTab('users');
-
-                // Create delete form if not exists
-                let deleteForm = document.getElementById('deleteUserForm');
-                if (!deleteForm) {
-                    deleteForm = document.createElement('form');
-                    deleteForm.id = 'deleteUserForm';
-                    deleteForm.method = 'POST';
-                    deleteForm.style.display = 'none';
-
-                    const actionInput = document.createElement('input');
-                    actionInput.type = 'hidden';
-                    actionInput.name = 'action';
-                    actionInput.value = 'delete_user';
-
-                    const idInput = document.createElement('input');
-                    idInput.type = 'hidden';
-                    idInput.name = 'user_id';
-                    idInput.id = 'delete_user_id';
-
-                    deleteForm.appendChild(actionInput);
-                    deleteForm.appendChild(idInput);
-                    document.body.appendChild(deleteForm);
-                }
-
-                document.getElementById('delete_user_id').value = id;
-                deleteForm.submit();
-            }
-        }
-
-        function deleteBanner(fileName) {
-            if (confirm(`Bạn có chắc muốn xóa banner "${fileName}"?`)) {
-                saveActiveTab('banners');
-                document.getElementById('delete_banner_file').value = fileName;
-                document.getElementById('deleteBannerForm').submit();
-            }
-        }
-
         function editVoucher(voucher) {
             saveActiveTab('vouchers');
 
