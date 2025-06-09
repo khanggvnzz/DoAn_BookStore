@@ -180,22 +180,34 @@ if (!isset($_SESSION['user_id']) && isset($_COOKIE['remember_user'])) {
                 </div>
 
                 <!-- Fixed password field structure -->
-                <div class="form-floating password-wrapper">
+                <div class="form-floating password-wrapper position-relative">
                     <input type="password" class="form-control" id="password" name="password" placeholder="Mật khẩu"
                         required>
                     <label for="password">
                         <i class="fas fa-lock me-2"></i>Mật khẩu
                     </label>
-                    <span class="password-toggle" onclick="togglePassword()">
+                    <button type="button" class="password-toggle btn btn-link" onclick="togglePassword()">
                         <i class="fas fa-eye" id="toggleIcon"></i>
-                    </span>
+                    </button>
                 </div>
 
-                <div class="form-check">
-                    <input type="checkbox" class="form-check-input" id="remember" name="remember">
-                    <label class="form-check-label" for="remember">
-                        Ghi nhớ đăng nhập
-                    </label>
+                <!-- Remember Me và Forgot Password Row - Fixed Layout -->
+                <div class="row align-items-center mb-3">
+                    <div class="col-6">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="remember" name="remember">
+                            <label class="form-check-label" for="remember">
+                                <i class="fas fa-bookmark me-1"></i>
+                                Ghi nhớ đăng nhập
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-6 text-end">
+                        <a href="/DoAn_BookStore/view/auth/forgot_pass.php" class="forgot-password-link">
+                            <i class="fas fa-key me-1"></i>
+                            Quên mật khẩu?
+                        </a>
+                    </div>
                 </div>
 
                 <div class="d-grid">

@@ -106,7 +106,7 @@ $userPermission = isset($_SESSION['user_permission']) ? $_SESSION['user_permissi
                     </li>
 
                     <li class="nav-item">
-                        <a class="nav-link" href="/DoAn_BookStore/contact">
+                        <a class="nav-link" href="/DoAn_BookStore/view/contact/contact.php">
                             <i class="fas fa-envelope"></i> Liên hệ
                         </a>
                     </li>
@@ -181,11 +181,6 @@ $userPermission = isset($_SESSION['user_permission']) ? $_SESSION['user_permissi
                                 <!-- Settings and Logout -->
                                 <li>
                                     <hr class="dropdown-divider">
-                                </li>
-                                <li>
-                                    <a class="dropdown-item" href="/DoAn_BookStore/settings">
-                                        <i class="fas fa-cog"></i> Cài đặt
-                                    </a>
                                 </li>
                                 <li>
                                     <a class="dropdown-item text-danger" href="/DoAn_BookStore/view/auth/logout.php"

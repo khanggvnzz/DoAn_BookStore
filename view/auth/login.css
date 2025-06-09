@@ -120,28 +120,40 @@ body {
 }
 
 .password-wrapper>.form-control {
-    padding-right: 3rem;
+    padding-right: 45px;
     /* Make room for toggle button */
 }
 
 .password-toggle {
     position: absolute;
+    right: 10px;
     top: 50%;
-    right: 1rem;
     transform: translateY(-50%);
-    cursor: pointer;
+    background: none;
+    border: none;
     color: #6c757d;
-    transition: color 0.3s ease;
-    z-index: 5;
+    padding: 0;
+    width: 30px;
+    height: 30px;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    cursor: pointer;
+    z-index: 5;
+    transition: color 0.3s ease;
 }
 
 .password-toggle:hover {
-    color: #667eea;
+    color: #007bff;
+    background: none;
+    border: none;
+}
+
+.password-toggle:focus {
+    outline: none;
+    box-shadow: none;
+    background: none;
+    border: none;
 }
 
 .form-check {
@@ -164,6 +176,14 @@ body {
     color: #495057;
     font-weight: 500;
     margin-left: 8px;
+    font-size: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.form-check-label:hover {
+    color: #495057;
 }
 
 .btn-login {
@@ -356,6 +376,30 @@ body {
     height: 1rem;
 }
 
+.forgot-password-link {
+    color: #6c757d;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+}
+
+.forgot-password-link:hover {
+    color: #007bff;
+    text-decoration: none;
+    transform: translateX(2px);
+}
+
+.forgot-password-link i {
+    transition: all 0.3s ease;
+}
+
+.forgot-password-link:hover i {
+    transform: scale(1.1);
+}
+
+/* Responsive adjustments */
 @media (max-width: 576px) {
     .main-container {
         padding: 10px;
@@ -377,5 +421,22 @@ body {
 
     .back-to-home a span {
         display: none;
+    }
+
+    .row.align-items-center .col-6 {
+        margin-bottom: 0.5rem;
+    }
+
+    .row.align-items-center .col-6:last-child {
+        text-align: left !important;
+        margin-bottom: 0;
+    }
+
+    .forgot-password-link {
+        font-size: 0.85rem;
+    }
+
+    .form-check-label {
+        font-size: 0.85rem;
     }
 }

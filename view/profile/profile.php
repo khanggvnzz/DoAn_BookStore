@@ -125,8 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $stats = [
     'orders_count' => $database->count('orders', 'user_id = :user_id', ['user_id' => $userId]),
-    'wishlist_count' => $database->count('wishlist', 'user_id = :user_id', ['user_id' => $userId]),
-    'reviews_count' => $database->count('reviews', 'user_id = :user_id', ['user_id' => $userId]),
+    'reviews_count' => $database->count('comments', 'user_id = :user_id', ['user_id' => $userId]),
 ];
 ?>
 
@@ -181,12 +180,6 @@ $stats = [
                 <div class="stats-card">
                     <div class="stats-number"><?php echo $stats['orders_count']; ?></div>
                     <div class="stats-label">Đơn hàng</div>
-                </div>
-            </div>
-            <div class="col-md-4 mb-3">
-                <div class="stats-card">
-                    <div class="stats-number"><?php echo $stats['wishlist_count']; ?></div>
-                    <div class="stats-label">Yêu thích</div>
                 </div>
             </div>
             <div class="col-md-4 mb-3">
@@ -370,53 +363,6 @@ $stats = [
                 <!-- Activity Tab -->
                 <div class="tab-pane fade" id="activity" role="tabpanel">
                     <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <div class="card border-0 shadow-sm">
-                                <div class="card-body">
-                                    <h6 class="card-title"><i class="fas fa-calendar-plus text-primary"></i> Ngày tham
-                                        gia</h6>
-                                    <p class="card-text">
-                                        <?php echo date('d/m/Y H:i', strtotime($user['created_at'])); ?>
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="col-md-6 mb-3">
-                            <div class="card border-0 shadow-sm">
-                                <div class="card-body">
-                                    <h6 class="card-title"><i class="fas fa-sign-in-alt text-success"></i> Đăng nhập
-                                        cuối</h6>
-                                    <p class="card-text">
-                                        <?php
-                                        if ($user['last_login']) {
-                                            echo date('d/m/Y H:i', strtotime($user['last_login']));
-                                        } else {
-                                            echo 'Chưa có thông tin';
-                                        }
-                                        ?>
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="col-md-6 mb-3">
-                            <div class="card border-0 shadow-sm">
-                                <div class="card-body">
-                                    <h6 class="card-title"><i class="fas fa-edit text-warning"></i> Cập nhật cuối</h6>
-                                    <p class="card-text">
-                                        <?php
-                                        if ($user['updated_at']) {
-                                            echo date('d/m/Y H:i', strtotime($user['updated_at']));
-                                        } else {
-                                            echo 'Chưa có cập nhật';
-                                        }
-                                        ?>
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
                         <div class="col-md-6 mb-3">
                             <div class="card border-0 shadow-sm">
                                 <div class="card-body">

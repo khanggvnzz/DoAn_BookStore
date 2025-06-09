@@ -1175,6 +1175,54 @@ class Database
         return $stmt->execute(['voucher_id' => $voucherId]);
     }
 
+    public function toggleVoucherStatus($voucherId)
+    {
+        try {
+            if (!is_numeric($voucherId) || $voucherId <= 0) {
+                throw new InvalidArgumentException('Voucher ID must be a positive integer');
+            }
+
+            // Get current voucher status
+            $voucher = $this->fetch(
+                "SELECT is_active FROM vouchers WHERE voucher_id = :voucher_id LIMIT 1",
+                ['voucher_id' => (int) $voucherId]
+            );
+
+            if (!$voucher) {
+                throw new InvalidArgumentException('Voucher does not exist');
+            }
+
+            // Toggle status: 1 -> 0, 0 -> 1
+            $newStatus = $voucher['is_active'] ? 0 : 1;
+
+            // Update voucher status
+            $result = $this->update(
+                'vouchers',
+                ['is_active' => $newStatus],
+                'voucher_id = :voucher_id',
+                ['voucher_id' => (int) $voucherId]
+            );
+
+            return [
+                'success' => $result > 0,
+                'old_status' => $voucher['is_active'],
+                'new_status' => $newStatus,
+                'message' => $result > 0
+                    ? ($newStatus ? 'Kích hoạt voucher thành công' : 'Vô hiệu hóa voucher thành công')
+                    : 'Không thể thay đổi trạng thái voucher'
+            ];
+
+        } catch (Exception $e) {
+            error_log('Toggle voucher status error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'old_status' => null,
+                'new_status' => null,
+                'message' => 'Có lỗi xảy ra: ' . $e->getMessage()
+            ];
+        }
+    }
+
     public function clearUserCart($userId)
     {
         $sql = "DELETE FROM cart WHERE user_id = :user_id";

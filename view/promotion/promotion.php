@@ -129,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                 <?php endif; ?>
                                 
                                 <div class="banner-actions">
-                                    <a href="/DoAn_BookStore/view/books/books.php" class="btn btn-primary btn-lg">
+                                    <a href="/DoAn_BookStore/index.php?controller=books&action=list" class="btn btn-primary btn-lg">
                                         <i class="fas fa-shopping-cart"></i> Mua Ngay
                                     </a>
                                     <button class="btn btn-outline-light btn-lg" onclick="scrollToVouchers()">
@@ -448,7 +448,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             
             // Redirect to books page after short delay
             setTimeout(() => {
-                window.location.href = '/DoAn_BookStore/view/books/books.php?voucher=' + encodeURIComponent(code);
+                window.location.href = '/DoAn_BookStore/index.php?controller=books&action=list';
             }, 1500);
         }
         

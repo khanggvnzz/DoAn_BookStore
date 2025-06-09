@@ -235,78 +235,7 @@ $validation = $database->validateCartItems($userId);
     <title>Giỏ hàng - BookStore</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        .cart-item {
-            border-bottom: 1px solid #eee;
-            padding: 20px 0;
-        }
-
-        .cart-item:last-child {
-            border-bottom: none;
-        }
-
-        .book-image {
-            width: 80px;
-            height: 120px;
-            object-fit: cover;
-            border-radius: 5px;
-        }
-
-        .quantity-input {
-            width: 70px;
-            text-align: center;
-        }
-
-        .cart-summary {
-            background: #f8f9fa;
-            border-radius: 10px;
-            padding: 20px;
-            position: sticky;
-            top: 20px;
-        }
-
-        .empty-cart {
-            text-align: center;
-            padding: 60px 20px;
-            color: #6c757d;
-        }
-
-        .empty-cart i {
-            font-size: 4rem;
-            margin-bottom: 20px;
-        }
-
-        .stock-warning {
-            color: #dc3545;
-            font-size: 0.875rem;
-        }
-
-        .voucher-section .form-select {
-            font-size: 0.9rem;
-        }
-
-        .voucher-section .form-select option {
-            padding: 8px;
-        }
-
-        .applied-voucher {
-            transition: all 0.3s ease;
-        }
-
-        .voucher-input .input-group {
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            border-radius: 8px;
-            overflow: hidden;
-        }
-
-        .btn-action {
-            transition: all 0.2s ease;
-        }
-
-        .btn-action:hover {
-            transform: translateY(-1px);
-        }
-    </style>
+    <link rel="stylesheet" href="/DoAn_BookStore/view/cart/cart.css">
 </head>
 
 <body>
