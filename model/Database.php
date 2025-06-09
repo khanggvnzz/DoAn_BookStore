@@ -362,6 +362,7 @@ class Database
     public function delete($table, $where, $params = [])
     {
         $sql = "DELETE FROM {$table} WHERE {$where}";
+        var_dump($sql, $where, $params); // Debugging line to check SQL and params
 
         try {
             $stmt = $this->getConnection()->prepare($sql);
@@ -1074,7 +1075,7 @@ class Database
     public function createOrder($orderData)
     {
         try {
-            return $this->insert('orders', $orderData);
+            return $this->insertOrder('orders', $orderData);
         } catch (Exception $e) {
             error_log('Create order error: ' . $e->getMessage());
             return false;
@@ -1125,6 +1126,44 @@ class Database
         }
     }
 
+    public function insertOrder($table, $data)
+    {
+        $columns = implode(', ', array_keys($data));
+        $placeholders = ':' . implode(', :', array_keys($data));
+
+        $sql = "INSERT INTO {$table} ({$columns}) VALUES ({$placeholders})";
+
+        try {
+            $stmt = $this->getConnection()->prepare($sql);
+            $result = $stmt->execute($data);
+
+            if ($result) {
+                $lastId = $this->getLastOrderId();
+                return $lastId ? (int) $lastId : true; // Return ID if available, or true if successful
+            }
+
+            return false;
+        } catch (PDOException $exception) {
+            echo "Insert error: " . $exception->getMessage();
+            return false;
+        }
+    }
+
+    public function getLastOrderId()
+    {
+        try {
+            $result = $this->fetch(
+                "SELECT order_id FROM orders ORDER BY order_id DESC LIMIT 1"
+            );
+
+            return $result ? (int) $result['order_id'] : null;
+
+        } catch (Exception $e) {
+            error_log('Get last order ID error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
     /**
      * Update order
      */
@@ -1136,7 +1175,7 @@ class Database
             }
 
             // Validate and clean data
-            $allowedFields = ['user_id', 'product', 'cost', 'pay_method', 'note', 'voucher_id'];
+            $allowedFields = ['user_id', 'product', 'cost', 'pay_method', 'note', 'voucher_id', 'status'];
             $cleanData = [];
 
             foreach ($orderData as $field => $value) {
@@ -1158,6 +1197,7 @@ class Database
                         case 'product':
                         case 'pay_method':
                         case 'note':
+                        case 'status':
                             $cleanData[$field] = $value !== null ? trim($value) : null;
                             break;
                     }
@@ -1175,11 +1215,108 @@ class Database
                 ['order_id' => (int) $orderId]
             );
 
-        } catch (Exception $e) {
-            error_log('Update order error: ' . $e->getMessage());
-            throw $e;
+        } catch (Exception $exception) {
+            error_log('Update order error: ' . $exception->getMessage());
+            throw $exception;
         }
     }
+
+    public function getOrdersByStatus($status, $page = 1, $perPage = 15)
+    {
+        try {
+            if (!is_string($status) || empty(trim($status))) {
+                throw new InvalidArgumentException('Status must be a non-empty string');
+            }
+
+            $validStatuses = ['pending', 'confirmed', 'cancelled'];
+            if (!in_array($status, $validStatuses)) {
+                throw new InvalidArgumentException('Invalid order status: ' . $status);
+            }
+
+            if (!is_numeric($page) || $page < 1) {
+                $page = 1;
+            }
+
+            if (!is_numeric($perPage) || $perPage < 1) {
+                $perPage = 15;
+            }
+
+            $offset = ($page - 1) * $perPage;
+
+            // Fix: Sử dụng trực tiếp trong SQL thay vì parameter cho LIMIT/OFFSET
+            $orders = $this->fetchAll(
+                "SELECT * FROM orders 
+                 WHERE status = :status 
+                 ORDER BY created_at DESC 
+                 LIMIT {$perPage} OFFSET {$offset}",
+                ['status' => $status]
+            );
+
+            // Get total count for pagination
+            $totalOrders = $this->count('orders', 'status = :status', ['status' => $status]);
+            $totalPages = ceil($totalOrders / $perPage);
+
+            return [
+                'orders' => $orders ?: [],
+                'pagination' => [
+                    'current_page' => (int) $page,
+                    'per_page' => (int) $perPage,
+                    'total_records' => (int) $totalOrders,
+                    'total_pages' => (int) $totalPages,
+                    'has_previous' => $page > 1,
+                    'has_next' => $page < $totalPages,
+                    'previous_page' => $page > 1 ? $page - 1 : null,
+                    'next_page' => $page < $totalPages ? $page + 1 : null
+                ]
+            ];
+
+        } catch (Exception $exception) {
+            error_log('Get orders by status error: ' . $exception->getMessage());
+            return [
+                'orders' => [],
+                'pagination' => [
+                    'current_page' => 1,
+                    'per_page' => $perPage,
+                    'total_records' => 0,
+                    'total_pages' => 0,
+                    'has_previous' => false,
+                    'has_next' => false,
+                    'previous_page' => null,
+                    'next_page' => null
+                ]
+            ];
+        }
+    }
+
+    /**
+     * Update order status (chỉ cho phép 3 trạng thái)
+     */
+    public function updateOrderStatus($orderId, $status)
+    {
+        try {
+            if (!is_numeric($orderId) || $orderId <= 0) {
+                throw new InvalidArgumentException('Order ID must be a positive integer');
+            }
+
+            $validStatuses = ['pending', 'confirmed', 'cancelled'];
+            if (!in_array($status, $validStatuses)) {
+                throw new InvalidArgumentException('Invalid order status');
+            }
+
+            return $this->update(
+                'orders',
+                ['status' => $status],
+                'order_id = :order_id',
+                ['order_id' => (int) $orderId]
+            );
+
+        } catch (Exception $exception) {
+            error_log('Update order status error: ' . $exception->getMessage());
+            return false;
+        }
+    }
+
+
 
     /**
      * Delete order
@@ -1266,43 +1403,48 @@ class Database
     {
         try {
             $where = '';
-            $params = [];
+            $parameters = [];
             $conditions = [];
 
             // Build WHERE clause based on filters
             if (!empty($filters['user_id'])) {
                 $conditions[] = "user_id = :user_id";
-                $params['user_id'] = (int) $filters['user_id'];
+                $parameters['user_id'] = (int) $filters['user_id'];
             }
 
             if (!empty($filters['pay_method'])) {
                 $conditions[] = "pay_method = :pay_method";
-                $params['pay_method'] = $filters['pay_method'];
+                $parameters['pay_method'] = $filters['pay_method'];
             }
 
             if (!empty($filters['voucher_id'])) {
                 $conditions[] = "voucher_id = :voucher_id";
-                $params['voucher_id'] = (int) $filters['voucher_id'];
+                $parameters['voucher_id'] = (int) $filters['voucher_id'];
+            }
+
+            if (!empty($filters['status'])) {
+                $conditions[] = "status = :status";
+                $parameters['status'] = $filters['status'];
             }
 
             if (!empty($filters['date_from'])) {
                 $conditions[] = "created_at >= :date_from";
-                $params['date_from'] = $filters['date_from'];
+                $parameters['date_from'] = $filters['date_from'];
             }
 
             if (!empty($filters['date_to'])) {
                 $conditions[] = "created_at <= :date_to";
-                $params['date_to'] = $filters['date_to'];
+                $parameters['date_to'] = $filters['date_to'];
             }
 
             if (!empty($filters['min_cost'])) {
                 $conditions[] = "cost >= :min_cost";
-                $params['min_cost'] = (float) $filters['min_cost'];
+                $parameters['min_cost'] = (float) $filters['min_cost'];
             }
 
             if (!empty($filters['max_cost'])) {
                 $conditions[] = "cost <= :max_cost";
-                $params['max_cost'] = (float) $filters['max_cost'];
+                $parameters['max_cost'] = (float) $filters['max_cost'];
             }
 
             if (!empty($conditions)) {
@@ -1313,15 +1455,15 @@ class Database
             $orderBy = $filters['order_by'] ?? 'created_at DESC';
 
             $sql = "SELECT * FROM orders {$where} ORDER BY {$orderBy} LIMIT :limit OFFSET :offset";
-            $params['limit'] = $perPage;
-            $params['offset'] = $offset;
+            $parameters['limit'] = $perPage;
+            $parameters['offset'] = $offset;
 
-            $orders = $this->fetchAll($sql, $params);
+            $orders = $this->fetchAll($sql, $parameters);
 
             // Get total count for pagination
             $countSql = "SELECT COUNT(*) as count FROM orders {$where}";
-            $countParams = array_diff_key($params, ['limit' => '', 'offset' => '']);
-            $totalOrders = $this->fetch($countSql, $countParams)['count'];
+            $countParameters = array_diff_key($parameters, ['limit' => '', 'offset' => '']);
+            $totalOrders = $this->fetch($countSql, $countParameters)['count'];
             $totalPages = ceil($totalOrders / $perPage);
 
             return [
@@ -1336,8 +1478,8 @@ class Database
                 ]
             ];
 
-        } catch (Exception $e) {
-            error_log('Get all orders error: ' . $e->getMessage());
+        } catch (Exception $exception) {
+            error_log('Get all orders error: ' . $exception->getMessage());
             return [
                 'orders' => [],
                 'pagination' => [
@@ -1391,14 +1533,17 @@ class Database
             }
 
             $items = [];
-            $parts = explode(';', trim($productString));
+            // Split by comma first
+            $parts = explode(',', trim($productString));
 
             foreach ($parts as $part) {
                 $part = trim($part);
-                if (strpos($part, '*') !== false) {
-                    list($bookId, $quantity) = explode('*', $part, 2);
-                    $bookId = (int) trim($bookId);
-                    $quantity = (int) trim($quantity);
+
+                // Use regex to match pattern: number (xnumber)
+                // Pattern explanation: (\d+) captures book ID, \s* matches spaces, \(x(\d+)\) captures quantity
+                if (preg_match('/^(\d+)\s*\(x(\d+)\)$/', $part, $matches)) {
+                    $bookId = (int) $matches[1];
+                    $quantity = (int) $matches[2];
 
                     if ($bookId > 0 && $quantity > 0) {
                         $items[] = [
@@ -1452,8 +1597,13 @@ class Database
     public function getOrderWithBooks($orderId)
     {
         try {
-            $order = $this->getOrderById($orderId);
+            // Validate input
+            if (!is_numeric($orderId) || $orderId <= 0) {
+                throw new InvalidArgumentException('Order ID must be a positive integer');
+            }
 
+            // Get order data
+            $order = $this->getOrderById($orderId);
             if (!$order) {
                 return null;
             }
@@ -1461,25 +1611,50 @@ class Database
             // Parse product string to get book items
             $items = $this->parseProductString($order['product']);
 
+            if (empty($items)) {
+                $order['items'] = [];
+                return $order;
+            }
+
             // Get book details for each item
             $orderItems = [];
             foreach ($items as $item) {
-                $book = $this->fetch("SELECT * FROM books WHERE id = :id", ['id' => $item['book_id']]);
+                $book = $this->fetch(
+                    "SELECT id, title, image, price, author, stock FROM books WHERE id = :id",
+                    ['id' => $item['book_id']]
+                );
+
                 if ($book) {
                     $orderItems[] = [
-                        'book_id' => $item['book_id'],
+                        'book_id' => $item['book_id'], // Fixed: was $item['id']
                         'quantity' => $item['quantity'],
                         'book_title' => $book['title'],
                         'book_author' => $book['author'],
-                        'book_price' => $book['price'],
+                        'book_price' => (float) $book['price'],
                         'book_image' => $book['image'],
-                        'book_category' => $book['category'],
-                        'total_price' => $book['price'] * $item['quantity']
+                        'book_stock' => (int) $book['stock'],
+                        'total_price' => (float) $book['price'] * (int) $item['quantity']
+                    ];
+                } else {
+                    // Handle case where book doesn't exist anymore
+                    $orderItems[] = [
+                        'book_id' => $item['book_id'],
+                        'quantity' => $item['quantity'],
+                        'book_title' => 'Sách không tồn tại',
+                        'book_author' => 'N/A',
+                        'book_price' => 0,
+                        'book_image' => null,
+                        'book_stock' => 0,
+                        'total_price' => 0,
+                        'is_deleted' => true
                     ];
                 }
             }
 
             $order['items'] = $orderItems;
+            $order['total_items'] = count($orderItems);
+            $order['total_books'] = array_sum(array_column($orderItems, 'quantity'));
+
             return $order;
 
         } catch (Exception $e) {
@@ -1629,34 +1804,36 @@ class Database
             $searchTerm = '%' . $keyword . '%';
             $offset = ($page - 1) * $perPage;
 
-            $sql = "SELECT o.*, u.username 
-                FROM orders o 
-                LEFT JOIN users u ON o.user_id = u.user_id 
-                WHERE o.order_id LIKE :search 
-                   OR o.product LIKE :search 
-                   OR o.pay_method LIKE :search 
-                   OR o.note LIKE :search 
-                   OR u.username LIKE :search
-                ORDER BY o.created_at DESC 
+            $sql = "SELECT orders.*, users.username 
+                FROM orders orders 
+                LEFT JOIN users users ON orders.user_id = users.user_id 
+                WHERE orders.order_id LIKE :search 
+                   OR orders.product LIKE :search 
+                   OR orders.pay_method LIKE :search 
+                   OR orders.note LIKE :search 
+                   OR orders.status LIKE :search
+                   OR users.username LIKE :search
+                ORDER BY orders.created_at DESC 
                 LIMIT :limit OFFSET :offset";
 
-            $params = [
+            $parameters = [
                 'search' => $searchTerm,
                 'limit' => $perPage,
                 'offset' => $offset
             ];
 
-            $orders = $this->fetchAll($sql, $params);
+            $orders = $this->fetchAll($sql, $parameters);
 
             // Get total count for pagination
             $countSql = "SELECT COUNT(*) as count 
-                     FROM orders o 
-                     LEFT JOIN users u ON o.user_id = u.user_id 
-                     WHERE o.order_id LIKE :search 
-                        OR o.product LIKE :search 
-                        OR o.pay_method LIKE :search 
-                        OR o.note LIKE :search 
-                        OR u.username LIKE :search";
+                     FROM orders orders 
+                     LEFT JOIN users users ON orders.user_id = users.user_id 
+                     WHERE orders.order_id LIKE :search 
+                        OR orders.product LIKE :search 
+                        OR orders.pay_method LIKE :search 
+                        OR orders.note LIKE :search 
+                        OR orders.status LIKE :search
+                        OR users.username LIKE :search";
 
             $totalOrders = $this->fetch($countSql, ['search' => $searchTerm])['count'];
             $totalPages = ceil($totalOrders / $perPage);
@@ -1673,8 +1850,8 @@ class Database
                 ]
             ];
 
-        } catch (Exception $e) {
-            error_log('Search orders error: ' . $e->getMessage());
+        } catch (Exception $exception) {
+            error_log('Search orders error: ' . $exception->getMessage());
             return [
                 'orders' => [],
                 'pagination' => [
@@ -1687,6 +1864,41 @@ class Database
                 ]
             ];
         }
+    }
+
+    /**
+     * Get order status options
+     */
+    public function getOrderStatusOptions()
+    {
+        return [
+            'pending' => 'Chờ xử lý',
+            'confirmed' => 'Đã xác nhận',
+            'cancelled' => 'Đã hủy'
+        ];
+    }
+
+    /**
+     * Get order status display name
+     */
+    public function getOrderStatusDisplayName($status)
+    {
+        $statusOptions = $this->getOrderStatusOptions();
+        return $statusOptions[$status] ?? $status;
+    }
+
+    /**
+     * Check if order status can be changed
+     */
+    public function canChangeOrderStatus($currentStatus, $newStatus)
+    {
+        $allowedTransitions = [
+            'pending' => ['confirmed', 'cancelled'],
+            'confirmed' => ['cancelled'],
+            'cancelled' => []
+        ];
+
+        return in_array($newStatus, $allowedTransitions[$currentStatus] ?? []);
     }
 
     /**
@@ -1973,5 +2185,67 @@ class Database
             return [];
         }
     }
+    public function voucherCodeExists($code)
+    {
+        try {
+            if (empty($code)) {
+                return false;
+            }
+
+            $query = "SELECT COUNT(*) as count FROM vouchers WHERE code = :code";
+            $params = ['code' => trim($code)];
+
+            $result = $this->fetch($query, $params);
+            return $result && $result['count'] > 0;
+
+        } catch (Exception $e) {
+            error_log('Voucher code exists check error: ' . $e->getMessage());
+            return false;
+        }
+    }
+    public function createVoucher($voucherData)
+    {
+        try {
+            // Insert voucher into database
+            $result = $this->insert('vouchers', $voucherData);
+
+            return $result;
+
+        } catch (Exception $e) {
+            error_log('Create voucher error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public function deleteVoucher($voucherId)
+    {
+        try {
+            // Insert voucher into database
+            $result = $this->deleteVoucherById('vouchers', $voucherId);
+
+            return $result;
+
+        } catch (Exception $e) {
+            error_log('Delete voucher error: ' . $e->getMessage());
+            return false;
+        }
+    }
+    public function deleteVoucherById($table, $where, $params = [])
+    {
+        $sql = "DELETE FROM {$table} WHERE voucher_id = {$where}";
+        var_dump($sql, $where, $params); // Debugging line to check SQL and params
+
+        try {
+            $stmt = $this->getConnection()->prepare($sql);
+            $stmt->execute($params);
+            return $stmt->rowCount();
+        } catch (PDOException $exception) {
+            echo "Delete error: " . $exception->getMessage();
+            return false;
+        }
+    }
+
+
+
 }
 ?>

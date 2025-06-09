@@ -360,6 +360,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         case 'delete_voucher':
             try {
                 $voucherId = intval($_POST['voucher_id']);
+                var_dump($voucherId);
 
                 $result = $database->deleteVoucher($voucherId);
 
@@ -893,8 +894,8 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                                         <tr>
                                                             <td>
                                                                 <code class="bg-success bg-opacity-10 text-success p-1 rounded">
-                                                                                                                    <?php echo htmlspecialchars($voucher['code']); ?>
-                                                                                                                </code>
+                                                                                                                                                                                                    <?php echo htmlspecialchars($voucher['code']); ?>
+                                                                                                                                                                                                </code>
                                                             </td>
                                                             <td><?php echo htmlspecialchars($voucher['name']); ?></td>
                                                             <td>
@@ -1008,8 +1009,8 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                                         <tr>
                                                             <td>
                                                                 <code class="bg-warning bg-opacity-10 text-warning p-1 rounded">
-                                                                                                                    <?php echo htmlspecialchars($voucher['code']); ?>
-                                                                                                                </code>
+                                                                                                                                                                                                    <?php echo htmlspecialchars($voucher['code']); ?>
+                                                                                                                                                                                                </code>
                                                             </td>
                                                             <td><?php echo htmlspecialchars($voucher['name']); ?></td>
                                                             <td>
@@ -1109,8 +1110,8 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
                                                         <td>
                                                             <code
                                                                 class="<?php echo $voucher['is_active'] ? 'bg-light' : 'bg-warning bg-opacity-10'; ?> p-1 rounded">
-                                                                                        <?php echo htmlspecialchars($voucher['code']); ?>
-                                                                                    </code>
+                                                                                                                                <?php echo htmlspecialchars($voucher['code']); ?>
+                                                                                                                            </code>
                                                         </td>
                                                         <td><?php echo htmlspecialchars($voucher['name']); ?></td>
                                                         <td>

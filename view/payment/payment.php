@@ -71,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         foreach ($cartItems as $item) {
             $itemTotal = $item['price'] * $item['quantity'];
             $totalCost += $itemTotal;
-            $productList[] = $item['title'] . ' (x' . $item['quantity'] . ')';
+            $productList[] = $item['id'] . ' (x' . $item['quantity'] . ')';
         }
 
         $productString = implode(', ', $productList);
@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
         if (isset($_SESSION['applied_voucher']) && $_SESSION['applied_voucher']) {
             $voucher = $_SESSION['applied_voucher'];
-            $voucherId = $voucher['id'];
+            $voucherId = $voucher['voucher_id'];
 
             // Use the already calculated final cost from checkout data
             $finalCost = $checkoutData['final_total'];
@@ -96,12 +96,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             'created_at' => date('Y-m-d H:i:s'),
             'pay_method' => $paymentMethod,
             'note' => $notes,
-            'voucher_id' => $voucherId
+            'voucher_id' => $voucherId,
+            'status' => 'pending'
         ];
 
         // Insert order into database
         $orderId = $database->createOrder($orderData);
-        var_dump($orderId);
+
 
         if (!$orderId) {
             throw new Exception('Không thể tạo đơn hàng');
@@ -109,7 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
         // Update book stock
         foreach ($cartItems as $item) {
-            $database->updateBookStock($item['book_id'], -$item['quantity']);
+            $database->updateBookStock($item['id'], -$item['quantity']);
         }
 
         // Update voucher usage if applied

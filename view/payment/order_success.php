@@ -28,6 +28,21 @@ if (!$database->isOrderOwnedByUser($orderId, $userId)) {
 
 // Get order details with book information
 $order = $database->getOrderWithBooks($orderId);
+$voucherId = $order['voucher_id'] ?? null;
+
+// Get voucher information if exists
+$voucher = null;
+$voucherDiscount = 0;
+if ($voucherId) {
+    $voucher = $database->getVoucherById($voucherId);
+    if ($voucher) {
+        // Calculate original total before discount
+        $originalTotal = array_sum(array_column($order['items'], 'total_price'));
+        // Calculate discount amount
+        $voucherDiscount = ($originalTotal * $voucher['discount_percent'] / 100);
+        // Apply max discount limit if exists
+    }
+}
 
 if (!$order) {
     header('Location: /DoAn_BookStore/');
@@ -63,6 +78,14 @@ if (!$order) {
 
         .book-item:last-child {
             border-bottom: none;
+        }
+
+        .voucher-info {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 10px 0;
         }
     </style>
 </head>
@@ -142,6 +165,38 @@ if (!$order) {
                     <?php endforeach; ?>
 
                     <hr>
+
+                    <?php
+                    $subtotal = array_sum(array_column($order['items'], 'total_price'));
+                    ?>
+
+                    <div class="row">
+                        <div class="col-md-8">
+                            <strong>Tạm tính:</strong>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <strong><?php echo number_format($subtotal * 1000, 0, ',', '.'); ?> VNĐ</strong>
+                        </div>
+                    </div>
+
+                    <?php if ($voucher && $voucherDiscount > 0): ?>
+                        <div class="voucher-info">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <i class="fas fa-ticket-alt text-primary"></i>
+                                    <strong>Voucher: <?php echo htmlspecialchars($voucher['code']); ?></strong><br>
+                                    <small
+                                        class="text-muted"><?php echo htmlspecialchars($voucher['description']); ?></small>
+                                </div>
+                                <div class="col-md-4 text-end">
+                                    <span class="text-success">
+                                        -<?php echo number_format($voucherDiscount * 1000, 0, ',', '.'); ?> VNĐ
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+
                     <div class="row">
                         <div class="col-md-8">
                             <strong>Tổng cộng:</strong>
@@ -152,6 +207,15 @@ if (!$order) {
                             </h4>
                         </div>
                     </div>
+
+                    <?php if ($voucher && $voucherDiscount > 0): ?>
+                        <div class="text-end">
+                            <small class="text-success">
+                                <i class="fas fa-check-circle"></i>
+                                Bạn đã tiết kiệm được <?php echo number_format($voucherDiscount * 1000, 0, ',', '.'); ?> VNĐ
+                            </small>
+                        </div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="text-center mt-4">
