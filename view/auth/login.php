@@ -132,7 +132,7 @@ if (!isset($_SESSION['user_id']) && isset($_COOKIE['remember_user'])) {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/DoAn_BookStore/view/auth/login.css">
+    <link rel="stylesheet" href="view/auth/login.css">
 </head>
 
 <body>
@@ -203,7 +203,7 @@ if (!isset($_SESSION['user_id']) && isset($_COOKIE['remember_user'])) {
                         </div>
                     </div>
                     <div class="col-6 text-end">
-                        <a href="/DoAn_BookStore/view/auth/forgot_pass.php" class="forgot-password-link">
+                        <a href="view/auth/forgot_pass.php" class="forgot-password-link">
                             <i class="fas fa-key me-1"></i>
                             Quên mật khẩu?
                         </a>
@@ -228,7 +228,7 @@ if (!isset($_SESSION['user_id']) && isset($_COOKIE['remember_user'])) {
 
                 <div class="register-link">
                     Chưa có tài khoản?
-                    <a href="/DoAn_BookStore/view/auth/register.php">
+                    <a href="view/auth/register.php">
                         Đăng ký ngay
                     </a>
                 </div>

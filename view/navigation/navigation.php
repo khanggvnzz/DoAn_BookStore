@@ -182,7 +182,7 @@ $userPermission = isset($_SESSION['user_permission']) ? $_SESSION['user_permissi
                                     <hr class="dropdown-divider">
                                 </li>
                                 <li>
-                                    <a class="dropdown-item text-danger" href="/DoAn_BookStore/view/auth/logout.php"
+                                    <a class="dropdown-item text-danger" href="view/auth/logout.php"
                                         onclick="return confirm('Bạn có chắc muốn đăng xuất?')">
                                         <i class="fas fa-sign-out-alt"></i> Đăng xuất
                                     </a>
