@@ -122,8 +122,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             var_dump($result); // Debugging line to check the result
 
             if ($result == 0 or $result) {
-                $_SESSION['success'] = 'Đăng ký thành công! Vui lòng đăng nhập để tiếp tục.';
                 header('Location: /view/auth/login.php');
+                $_SESSION['success'] = 'Đăng ký thành công! Vui lòng đăng nhập để tiếp tục.';
+                
                 exit;
             } else {
                 $_SESSION['error'] = 'Có lỗi xảy ra khi đăng ký. Vui lòng thử lại!';
