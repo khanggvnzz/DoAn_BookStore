@@ -123,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($result == 0 or $result) {
                 $_SESSION['success'] = 'Đăng ký thành công! Vui lòng đăng nhập để tiếp tục.';
-                header('Location:view/auth/login.php');
+                header('Location:/view/auth/login.php');
                 exit;
             } else {
                 $_SESSION['error'] = 'Có lỗi xảy ra khi đăng ký. Vui lòng thử lại!';
@@ -153,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="view/auth/register.css">
+    <link rel="stylesheet" href="/view/auth/register.css">
 </head>
 
 <body>
@@ -286,7 +286,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     <div class="login-link text-center">
                         Đã có tài khoản?
-                        <a href="view/auth/login.php">
+                        <a href="/view/auth/login.php">
                             Đăng nhập ngay
                         </a>
                     </div>
