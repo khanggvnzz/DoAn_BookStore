@@ -1,11 +1,12 @@
 <?php
+ob_start();
 session_start();
 require_once __DIR__ . '/../../model/Database.php';
 require_once __DIR__ . '/../../model/UserModel.php';
 
 // Nếu người dùng đã đăng nhập, chuyển hướng đến trang chủ
 if (isset($_SESSION['user_id'])) {
-    header('https://doan-bookstore.onrender.com/');
+    header('Location: https://doan-bookstore.onrender.com/');
     exit;
 }
 
@@ -64,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['success'] = 'Đăng nhập thành công! Chào mừng ' . $userData['name'];
 
                 // Determine redirect location
-                $redirect = 'https://doan-bookstore.onrender.com//';
+                $redirect = 'https://doan-bookstore.onrender.com/';
 
                 // Check if there's a specific redirect after login
                 if (isset($_SESSION['redirect_after_login'])) {
@@ -113,7 +114,7 @@ if (!isset($_SESSION['user_id']) && isset($_COOKIE['remember_user'])) {
             $_SESSION['admin'] = true;
         }
 
-        header('Location: /DoAn_BookStore/');
+        header('Location: https://doan-bookstore.onrender.com/');
         exit;
     } else {
         // Invalid cookie, remove it
