@@ -200,10 +200,10 @@ $userPermission = isset($_SESSION['user_permission']) ? $_SESSION['user_permissi
                         </div>
 
                         <!-- Login/Register buttons -->
-                        <a href="/DoAn_BookStore/view/auth/login.php" class="btn btn-outline-light me-2">
+                        <a href="view/auth/login.php" class="btn btn-outline-light me-2">
                             <i class="fas fa-sign-in-alt"></i> Đăng nhập
                         </a>
-                        <a href="/DoAn_BookStore/view/auth/register.php" class="btn btn-light">
+                        <a href="view/auth/register.php" class="btn btn-light">
                             <i class="fas fa-user-plus"></i> Đăng ký
                         </a>
                     <?php endif; ?>
