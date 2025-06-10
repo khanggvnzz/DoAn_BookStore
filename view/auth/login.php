@@ -229,7 +229,7 @@ if (!isset($_SESSION['user_id']) && isset($_COOKIE['remember_user'])) {
 
                 <div class="register-link">
                     Chưa có tài khoản?
-                    <a href="view/auth/register.php">
+                    <a href="/view/auth/register.php">
                         Đăng ký ngay
                     </a>
                 </div>
