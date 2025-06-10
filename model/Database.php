@@ -751,7 +751,7 @@ class Database
                         'users',
                         ['last_login' => date('Y-m-d H:i:s')],
                         'user_id = :user_id',
-                        ['user_id' => $userData['id']]
+                        ['user_id' => $userData['user_id']]
                     );
 
                     return $userData;
