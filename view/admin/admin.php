@@ -570,7 +570,7 @@ $low_stock_books = $database->fetchAll("SELECT * FROM books WHERE stock < 5 ORDE
     <title>Quản trị hệ thống - BookStore</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/DoAn_BookStore/view/admin/admin.css">
+    <link rel="stylesheet" href="/view/admin/admin.css">
 </head>
 
 <body>

@@ -5,7 +5,7 @@ require_once __DIR__ . '/../../model/UserModel.php';
 
 // Nếu người dùng đã đăng nhập, chuyển hướng đến trang chủ
 if (isset($_SESSION['user_id'])) {
-    header('Location: /DoAn_BookStore/');
+    header('https://doan-bookstore.onrender.com/');
     exit;
 }
 
