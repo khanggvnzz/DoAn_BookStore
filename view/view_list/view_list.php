@@ -40,7 +40,7 @@ $baseUrl = '/DoAn_BookStore';
     <title>Danh Sách - BookStore</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/DoAn_BookStore/view/view_list/view_list.css">
+    <link rel="stylesheet" href="view/view_list/view_list.css">
 </head>
 
 <body>
