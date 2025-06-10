@@ -1,7 +1,7 @@
 <!-- Promotion Banner -->
 
 <head>
-    <link rel="stylesheet" href="/DoAn_BookStore/view/banner/banner.css">
+    <link rel="stylesheet" href="view/banner/banner.css">
 </head>
 <div class="promo-banner">
     <div class="container-fluid p-0">

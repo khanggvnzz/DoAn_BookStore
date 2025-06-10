@@ -1,7 +1,7 @@
 <!-- Footer -->
 
 <head>
-    <link rel="stylesheet" href='/DoAn_BookStore/view/footer/footer.css'>
+    <link rel="stylesheet" href='view/footer/footer.css'>
 </head>
 <footer class=" bg-dark text-light mt-5">
     <div class="container py-5">
