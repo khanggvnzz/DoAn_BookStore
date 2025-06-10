@@ -193,7 +193,7 @@ $userPermission = isset($_SESSION['user_permission']) ? $_SESSION['user_permissi
                     <?php else: ?>
                         <!-- Shopping Cart (for non-logged in users - redirect to login) -->
                         <div class="position-relative me-3">
-                            <a href="/DoAn_BookStore/view/auth/login.php" class="btn btn-outline-light"
+                            <a href="view/auth/login.php" class="btn btn-outline-light"
                                 title="Đăng nhập để sử dụng giỏ hàng">
                                 <i class="fas fa-shopping-cart"></i>
                             </a>
