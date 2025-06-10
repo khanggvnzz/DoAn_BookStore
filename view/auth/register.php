@@ -123,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($result == 0 or $result) {
                 $_SESSION['success'] = 'Đăng ký thành công! Vui lòng đăng nhập để tiếp tục.';
-                header('Location:/view/auth/login.php');
+                header('Location: login.php');
                 exit;
             } else {
                 $_SESSION['error'] = 'Có lỗi xảy ra khi đăng ký. Vui lòng thử lại!';
