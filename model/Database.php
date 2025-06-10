@@ -17,46 +17,46 @@ class Database
 
     // Load environment variables from .env file
     private function loadEnv()
-    {
-        $envFile = __DIR__ . '/../.env';
+	{
+    		$envFile = __DIR__ . '/../.env';
 
-        if (file_exists($envFile)) {
-            $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    		if (file_exists($envFile)) {
+        		$lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 
-            foreach ($lines as $line) {
-                if (strpos($line, '=') !== false && strpos($line, '#') !== 0) {
-                    list($key, $value) = explode('=', $line, 2);
-                    $key = trim($key);
-                    $value = trim($value);
+        		foreach ($lines as $line) {
+            			if (strpos($line, '=') !== false && strpos(trim($line), '#') !== 0) {
+                			list($key, $value) = explode('=', $line, 2);
+                			$key = trim($key);
+                			$value = trim($value);
 
-                    switch ($key) {
-                        case 'DB_HOST':
-                            $this->host = $value;
-                            break;
-                        case 'DB_PORT':
-                            $this->port = $value;
-                            break;
-                        case 'DB_DATABASE':
-                            $this->db_name = $value;
-                            break;
-                        case 'DB_USERNAME':
-                            $this->username = $value;
-                            break;
-                        case 'DB_PASSWORD':
-                            $this->password = $value;
-                            break;
-                    }
-                }
-            }
-        } else {
-            // Fallback to default values if .env file doesn't exist
-            $this->host = getenv('DB_HOST') ?: '127.0.0.1';
-            $this->port = getenv('DB_PORT') ?: '3306';
-            $this->dbname = getenv('DB_DATABASE') ?: '';
-            $this->username = getenv('DB_USERNAME') ?: 'root';
-            $this->password = getenv('DB_PASSWORD') ?: '';
-        }
-    }
+                			switch ($key) {
+                    				case 'DB_HOST':
+                        				$this->host = $value;
+                        				break;
+                    				case 'DB_PORT':
+                        				$this->port = $value;
+                        				break;
+                    				case 'DB_DATABASE':
+                        				$this->db_name = $value;
+                        				break;
+                    				case 'DB_USERNAME':
+                        				$this->username = $value;
+                        				break;
+                    				case 'DB_PASSWORD':
+                        				$this->password = $value;
+                        				break;
+                					}
+            					}
+        				}
+    				} else {
+        				// Fallback to environment variables
+        				$this->host     = getenv('DB_HOST') ?: '127.0.0.1';
+        				$this->port     = getenv('DB_PORT') ?: '3306';
+       					$this->db_name  = getenv('DB_DATABASE') ?: '';
+        				$this->username = getenv('DB_USERNAME') ?: 'root';
+        				$this->password = getenv('DB_PASSWORD') ?: '';
+    			}
+     }
 
     // Get database connection
     public function getConnection()
