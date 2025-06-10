@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['success'] = 'Đăng nhập thành công! Chào mừng ' . $userData['name'];
 
                 // Determine redirect location
-                $redirect = '/DoAn_BookStore/';
+                $redirect = 'https://doan-bookstore.onrender.com//';
 
                 // Check if there's a specific redirect after login
                 if (isset($_SESSION['redirect_after_login'])) {
@@ -72,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     unset($_SESSION['redirect_after_login']);
                 } elseif ($userData['permission'] === 'admin') {
                     // Redirect admin to dashboard
-                    $redirect = '/DoAn_BookStore/';
+                    $redirect = 'https://doan-bookstore.onrender.com/';
                 }
 
                 // Clear any output buffer and redirect
