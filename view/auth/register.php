@@ -119,7 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Use Database method to create user with SHA256 hash
             $result = $database->createUserWithSHA256($userData);
-            var_dump($result); // Debugging line to check the result
+            #var_dump($result); // Debugging line to check the result
 
             if ($result == 0 or $result) {
                 header('Location: /view/auth/login.php');
